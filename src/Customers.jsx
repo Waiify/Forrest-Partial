@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import Header from "./components/Header.jsx";
-import Sidebar from "./components/sidebar.jsx";
+import Header from "./components/AdminHeader.jsx";
+import Sidebar from "./components/Adminsidebar.jsx";
 
 const STATUS_CONFIG = {
   active: { label: "Active", dot: "bg-blue-500", text: "text-blue-700" },

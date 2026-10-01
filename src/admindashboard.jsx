@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { CalendarCheck, BedSingle, DoorOpen, Banknote, Check } from "lucide-react";
 
-import Header from "./components/Header.jsx";
-import Sidebar from "./components/sidebar.jsx";
+import Header from "./components/AdminHeader.jsx";
+import Sidebar from "./components/Adminsidebar.jsx";
 
 /* Replace with real data (props, a hook, or an API call).
    status must be one of: "available" | "occupied" | "cleaning" | "maintenance" */

@@ -26,6 +26,8 @@ createRoot(document.getElementById('root')).render(
         <Route path="/adminLogin" element={<AdminLogin />} />
         <Route path="/admindashboard" element={<Dashboard />} />
         <Route path="/admincapsule" element={<AdminCapsule />} />
+        <Route path="/capsule" element={<AdminCapsule />} />
+        <Route path="/capsules" element={<AdminCapsule />} />
         <Route path="/staffLogin" element={<StaffLogin />} />
         <Route path="/staffSignup" element={<StaffSignup />} />
         <Route path="/StaffCapsuleAvailability" element={<StaffCapsuleAvailability />} />

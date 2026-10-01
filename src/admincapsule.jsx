@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import Header from "./components/Header.jsx";
-import Sidebar from "./components/sidebar.jsx";
+import Header from "./components/AdminHeader.jsx";
+import Sidebar from "./components/Adminsidebar.jsx";
 
 import {
   ChevronDown,

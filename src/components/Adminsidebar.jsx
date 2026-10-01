@@ -22,7 +22,7 @@ const NAV_ITEMS = [
   {
     group: "Management",
     items: [
-      { id: "Staff", label: "Staff", icon: UserCog },
+      { id: "Staff Management", label: "Staff Management", icon: UserCog },
       { id: "Reports", label: "Reports", icon: BarChart3 },
       { id: "Settings", label: "Settings", icon: Settings },
     ],
