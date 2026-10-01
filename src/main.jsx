@@ -14,15 +14,23 @@ import Dashboard from './admindashboard.jsx'
 import Customers from './Customers.jsx'
 import AdminCapsule from './admincapsule.jsx'
 import LandingPage from './landingPage.jsx'
+import StaffDashboard from './StaffDashboard.jsx'
+import StaffCapsuleManagement from './StaffCapsuleManagement.jsx'
+import StaffCapsuleAvailability from './StaffCapsuleAvailability.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-     <Routes>
+      <Routes>
         <Route path="/" element={<Navigate to="/landingPage" replace />} />
         <Route path="/adminLogin" element={<AdminLogin />} />
+        <Route path="/admindashboard" element={<Dashboard />} />
+        <Route path="/admincapsule" element={<AdminCapsule />} />
         <Route path="/staffLogin" element={<StaffLogin />} />
         <Route path="/staffSignup" element={<StaffSignup />} />
+        <Route path="/StaffCapsuleAvailability" element={<StaffCapsuleAvailability />} />
+        <Route path="/StaffCapsuleManagement" element={<StaffCapsuleManagement />} />
+        <Route path="/StaffDashboard" element={<StaffDashboard />} />
         <Route path="/CustomerSignUp" element={<CustomerSignUp />} />
         <Route path="/CustomerLogIn" element={<CustomerLogIn />} />
         <Route path="/customerResetpass" element={<ResetPassword />} />
@@ -31,11 +39,10 @@ createRoot(document.getElementById('root')).render(
         <Route path="/verify-code" element={<VerifyCode />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/customers" element={<Customers />} />
-        <Route path="/capsule" element={<AdminCapsule />} />
-        <Route path="/capsules" element={<AdminCapsule />} />
         <Route path="/landingPage" element={<LandingPage />} />
+
         <Route path="*" element={<Navigate to="/landingPage" replace />} />
-    </Routes>
+      </Routes>
     </BrowserRouter>
-  </StrictMode>,
+  </StrictMode>
 )
