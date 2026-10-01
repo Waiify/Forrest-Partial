@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import Header from "./components/Header.jsx";
-import Sidebar from "./components/sidebar.jsx";
+import Header from "./components/AdminHeader.jsx";
+import Sidebar from "./components/Adminsidebar.jsx";
 
 const STATUS_CONFIG = {
   active: { label: "Active", dot: "bg-blue-500", text: "text-blue-700" },
@@ -88,14 +88,22 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const active = location.pathname === "/customers" ? "Customers" : "Dashboard";
+  const active =
+    location.pathname === "/customers"
+      ? "Customers"
+      : location.pathname === "/capsule" || location.pathname === "/capsules"
+        ? "Capsule"
+        : "Dashboard";
 
   function handleNavigate(section) {
+    if (section === "Capsule") {
+      navigate("/capsule");
+      return;
+    }
     navigate(section === "Customers" ? "/customers" : "/dashboard");
   }
 
   useEffect(() => {
-    setLoading(true);
     fetch("http://localhost:5000/api/users")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load customers");
