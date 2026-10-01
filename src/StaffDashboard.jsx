@@ -10,10 +10,13 @@ const ROUTES = {
   Dashboard: "/StaffDashboard",
   CapsuleManagement: "/StaffCapsuleManagement",
   CapsuleAvailability: "/StaffCapsuleAvailability",
-  Reservation: "/reservation",
-  ReservationHistory: "/reservation/history",
-  SystemLogs: "/system-logs",
+  Reservation: "/Reservation",
+  ReservationHistory: "/ReservationHistory",
+  SystemLogs: "/SystemLogs",
 };
+
+
+{/*for header title ni siya*/}
 
 const PAGE_TITLES = {
   Dashboard: "Dashboard",
@@ -24,7 +27,7 @@ const PAGE_TITLES = {
   SystemLogs: "System Logs",
 };
 
-//for display purposes ang mga data 
+ {/*need pa ni siyag real na data, change into real one*/}
 const INITIAL_ROOMS = [
   { id: "R-01", status: "available" },
   { id: "R-02", status: "reserve" },
@@ -33,10 +36,10 @@ const INITIAL_ROOMS = [
   { id: "R-05", status: "reserve" },
   { id: "R-06", status: "available" },
   { id: "R-07", status: "available" },
-  { id: "R-08", status: "maintenance" },
+  { id: "R-08", status: "Under Maintenance" },
 ];
 
-//dummy datas pa niiiii rawrrr
+  {/*dummy datas pa niiiii rawrrr, change this into real data from database*/}
 const INITIAL_RESERVATIONS = [
   { id: 1, guest: "Meme Dealdo", email: "meme@gmail.com", capsule: "R-01", dateTime: "02/08/26, 1:00am" },
   { id: 2, guest: "Dodong Ruiz", email: "dodong@gmail.com", capsule: "R-01", dateTime: "02/08/26, 1:00am" },
@@ -46,11 +49,12 @@ const INITIAL_RESERVATIONS = [
   { id: 6, guest: "Tao Lang Pasensyana", email: "tao@gmail.com", capsule: "R-06", dateTime: "02/08/26, 1:00am" },
 ];
 
+{/*dummy datas pa niiiii rawrrr, change this into real data from database*/}
 const STATUS_CONFIG = {
   available: { label: "Available", dot: "bg-emerald-500", tile: "bg-[#86d1b9] text-[#1d5f4a]" },
   occupied: { label: "Occupied", dot: "bg-purple-500", tile: "bg-[#ac72e6] text-[#3f1a75]" },
   reserve: { label: "Reserve", dot: "bg-amber-500", tile: "bg-[#f2b45c] text-[#7a4a0b]" },
-  maintenance: { label: "Maintenance", dot: "bg-red-500", tile: "bg-[#e0666a] text-[#6b1518]" },
+  maintenance: { label: "Under Maintenance", dot: "bg-red-500", tile: "bg-[#e0666a] text-[#6b1518]" },
 };
 
 const STATUS_ORDER = ["available", "occupied", "reserve", "maintenance"];

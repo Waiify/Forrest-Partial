@@ -5,13 +5,14 @@ import pageBackground from "./assets/page_background.jpeg";
 import StaffHeader from "./components/StaffHeader.jsx";
 import StaffSidebar from "./components/StaffSidebar.jsx";
 
+
 const ROUTES = {
   Dashboard: "/StaffDashboard",
   CapsuleManagement: "/StaffCapsuleManagement",
-  CapsuleAvailability: "/capsules/availability",
-  Reservation: "/reservation",
-  ReservationHistory: "/reservation/history",
-  SystemLogs: "/system-logs",
+  CapsuleAvailability: "/StaffCapsuleAvailability",
+  Reservation: "/Reservation",
+  ReservationHistory: "/ReservationHistory",
+  SystemLogs: "/SystemLogs",
 };
 
 const PAGE_TITLES = {
@@ -23,7 +24,7 @@ const PAGE_TITLES = {
   SystemLogs: "System Logs",
 };
 
-// Sample capsule data
+{/*change the data into real data from database*/}
 const INITIAL_CAPSULES = [
   {
     id: "C101",
@@ -69,8 +70,11 @@ const INITIAL_CAPSULES = [
   },
 ];
 
+
+{/*status na gapilan for the current state ni capsules*/}
+
 const STATUS_STYLES = {
-  Available: "bg-[#3aae8c] text-white",
+  "Available": "bg-[#3aae8c] text-white",
   "Coming Soon": "bg-[#ead86d] text-white",
   "Under Renovation": "bg-[#d96f72] text-white",
 };
@@ -366,7 +370,7 @@ export default function StaffCapsuleManagement() {
           </div>
         </main>
 
-{/* For adding new capsule */}
+{/* For adding new capsule kadtong overlay ito, once na i click nimo ang add capsule button*/}
         {showAddModal && (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
     <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">

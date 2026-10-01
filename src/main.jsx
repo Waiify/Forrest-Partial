@@ -43,5 +43,5 @@ createRoot(document.getElementById('root')).render(
         <Route path="*" element={<Navigate to="/landingPage" replace />} />
       </Routes>
     </BrowserRouter>
-  </StrictMode>,
+  </StrictMode>
 )

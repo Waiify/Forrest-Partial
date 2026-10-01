@@ -9,10 +9,11 @@ const ROUTES = {
   Dashboard: "/StaffDashboard",
   CapsuleManagement: "/StaffCapsuleManagement",
   CapsuleAvailability: "/StaffCapsuleAvailability",
-  Reservation: "/reservation",
-  ReservationHistory: "/reservation/history",
-  SystemLogs: "/system-logs",
+  Reservation: "/Reservation",
+  ReservationHistory: "/ReservationHistory",
+  SystemLogs: "/SystemLogs",
 };
+
 
 const PAGE_TITLES = {
   Dashboard: "Dashboard",
@@ -22,8 +23,6 @@ const PAGE_TITLES = {
   ReservationHistory: "Reservation History",
   SystemLogs: "System Logs",
 };
-
-
 
 const STATUS_ORDER = [
   "available",
@@ -58,9 +57,7 @@ const STATUS_CONFIG = {
   },
 };
 
-/* -----------------------------
-   CAPSULE DATA
------------------------------ */
+{/*change into real data from database*/}
 
 const INITIAL_CAPSULES = [
   { id: "R-01", status: "available" },

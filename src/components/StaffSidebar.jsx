@@ -36,7 +36,7 @@ const NAV_SECTIONS = [
 export default function staffSidebar({ active, onNavigate }) {
   return (
     <aside className="flex w-60 shrink-0 flex-col bg-[#003F22] text-white">
-      {/* Brand */}
+
       <div className="flex h-16 items-center gap-2 px-5">
         <img
           src={logo}
@@ -68,7 +68,7 @@ export default function staffSidebar({ active, onNavigate }) {
                   key={id}
                   type="button"
                   onClick={() => onNavigate(id)}
-                  className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-semibold text-white ${
+                  className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-s font-semibold text-white ${
                     isActive ? "bg-white/15" : "hover:bg-white/10"
                   }`}
                 >
@@ -87,6 +87,8 @@ export default function staffSidebar({ active, onNavigate }) {
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-700 text-sm font-semibold">
             RD
           </div>
+                  {/*need pa ni siyag real na data*/}
+
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-xs font-semibold">Meme Dealdo</div>
             <div className="truncate text-[10px] text-white/70">Staff</div>
