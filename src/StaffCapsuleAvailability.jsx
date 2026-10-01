@@ -51,13 +51,13 @@ const STATUS_CONFIG = {
   },
 
   maintenance: {
-    label: "Maintenance",
+    label: "Under Maintenance",
     dot: "bg-[#df6267]",
     tile: "bg-[#df6267] text-[#8d363b]",
   },
 };
 
-{/*change into real data from database*/}
+{/*change into real data from database, mga rooms/capsule na ni siya */}
 
 const INITIAL_CAPSULES = [
   { id: "R-01", status: "available" },
@@ -76,23 +76,8 @@ const INITIAL_CAPSULES = [
   { id: "R-02", status: "reserved" },
   { id: "R-02", status: "reserved" },
 
-  { id: "R-01", status: "available" },
-  { id: "R-02", status: "reserved" },
-  { id: "R-03", status: "occupied" },
-  { id: "R-08", status: "maintenance" },
-  { id: "R-01", status: "available" },
-  { id: "R-02", status: "reserved" },
-  { id: "R-02", status: "reserved" },
 
-  { id: "R-01", status: "available" },
-  { id: "R-02", status: "reserved" },
-  { id: "R-03", status: "occupied" },
-  { id: "R-08", status: "maintenance" },
-  { id: "R-01", status: "available" },
-  { id: "R-02", status: "reserved" },
-  { id: "R-02", status: "reserved" },
 ];
-
 
 function CapsuleStatus({ rooms, onChangeStatus }) {
   const [filter, setFilter] = useState("all");
@@ -121,10 +106,10 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
       : rooms.filter((room) => room.status === filter);
 
   return (
-    <div className="mt-5 w-full rounded-[20px] bg-white shadow-md">
+    <div className="mt-1 w-full rounded-[20px] bg-white shadow-md">
 
-      {/* Header */}
-      <div className="border-b border-[#b5ded1] px-5 pb-3 pt-4">
+     
+      <div className="border-b border-[#b5ded1] px-5 pb-3 pt-4 mt-2">
         <h2 className="text-[17px] font-bold text-[#0b4d2c]">
           Real-Time Capsule Availability
         </h2>
@@ -134,7 +119,7 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
         </p>
       </div>
 
-      {/* Legend */}
+      
       <div className="flex flex-wrap items-center gap-5 px-5 py-3">
         {STATUS_ORDER.map((status) => {
           const config = STATUS_CONFIG[status];
@@ -163,7 +148,7 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
         })}
       </div>
 
-      {/* Capsule Grid */}
+      
       <div className="px-5 pb-6 pt-2">
 
         {visibleRooms.length === 0 ? (
@@ -186,7 +171,7 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
                   className="relative"
                 >
 
-                  {/* Capsule */}
+                 
                   <button
                     type="button"
                     onClick={() =>
@@ -203,7 +188,7 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
                     </span>
                   </button>
 
-                  {/* Status Menu */}
+                  
                   {isOpen && (
                     <div className="absolute left-0 top-full z-30 mt-1 w-full min-w-[135px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
 
@@ -291,7 +276,7 @@ export default function StaffCapsuleAvailability() {
   return (
     <div className="flex h-screen w-full text-slate-900">
 
-      {/* Sidebar */}
+     
       <StaffSidebar
         active={active}
         onNavigate={handleNavigate}

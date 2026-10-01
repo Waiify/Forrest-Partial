@@ -66,7 +66,7 @@ const INITIAL_CAPSULES = [
     capsule: "R-06",
     type: "Standard",
     price: "₱36 per hour",
-    status: "Under Renovation",
+    status: "Under Maintenance",
   },
 ];
 
@@ -76,7 +76,7 @@ const INITIAL_CAPSULES = [
 const STATUS_STYLES = {
   "Available": "bg-[#3aae8c] text-white",
   "Coming Soon": "bg-[#ead86d] text-white",
-  "Under Renovation": "bg-[#d96f72] text-white",
+  "Under Maintenance": "bg-[#d96f72] text-white",
 };
 
 export default function StaffCapsuleManagement() {

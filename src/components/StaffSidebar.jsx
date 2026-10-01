@@ -56,7 +56,7 @@ export default function staffSidebar({ active, onNavigate }) {
       <nav className="flex-1 space-y-4 px-3 py-2">
         {NAV_SECTIONS.map(({ title, items }) => (
           <div key={title}>
-            <div className="px-3 pb-1 text-sm font-semibold text-white/80">
+            <div className="px-3 pb-1 text-[15px] font-semibold text-white/80">
               {title}
             </div>
 
@@ -68,7 +68,7 @@ export default function staffSidebar({ active, onNavigate }) {
                   key={id}
                   type="button"
                   onClick={() => onNavigate(id)}
-                  className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-s font-semibold text-white ${
+                  className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-[14px] font-semibold text-white ${
                     isActive ? "bg-white/15" : "hover:bg-white/10"
                   }`}
                 >
@@ -81,7 +81,7 @@ export default function staffSidebar({ active, onNavigate }) {
         ))}
       </nav>
 
-      {/* User */}
+     
       <div className="mx-3 border-t border-white/30 py-3">
         <div className="flex items-center gap-3 px-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-700 text-sm font-semibold">
