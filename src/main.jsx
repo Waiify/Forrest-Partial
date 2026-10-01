@@ -10,8 +10,9 @@ import CustomerLogIn from './CustomerLogIn.jsx'
 import CustomerSignUp from './CustomerSignUp.jsx'
 import ResetPassword from './customerResetpass.jsx'
 import VerifyCode from './customerVerification.jsx'
-import Dashboard from './dashboard.jsx'
+import Dashboard from './admindashboard.jsx'
 import Customers from './Customers.jsx'
+import AdminCapsule from './admincapsule.jsx'
 import LandingPage from './landingPage.jsx'
 
 createRoot(document.getElementById('root')).render(
@@ -30,6 +31,8 @@ createRoot(document.getElementById('root')).render(
         <Route path="/verify-code" element={<VerifyCode />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/customers" element={<Customers />} />
+        <Route path="/capsule" element={<AdminCapsule />} />
+        <Route path="/capsules" element={<AdminCapsule />} />
         <Route path="/landingPage" element={<LandingPage />} />
         <Route path="*" element={<Navigate to="/landingPage" replace />} />
     </Routes>

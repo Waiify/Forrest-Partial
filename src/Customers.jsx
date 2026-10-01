@@ -88,14 +88,22 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const active = location.pathname === "/customers" ? "Customers" : "Dashboard";
+  const active =
+    location.pathname === "/customers"
+      ? "Customers"
+      : location.pathname === "/capsule" || location.pathname === "/capsules"
+        ? "Capsule"
+        : "Dashboard";
 
   function handleNavigate(section) {
+    if (section === "Capsule") {
+      navigate("/capsule");
+      return;
+    }
     navigate(section === "Customers" ? "/customers" : "/dashboard");
   }
 
   useEffect(() => {
-    setLoading(true);
     fetch("http://localhost:5000/api/users")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load customers");

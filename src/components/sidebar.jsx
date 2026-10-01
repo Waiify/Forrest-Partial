@@ -1,72 +1,82 @@
 import {
   LayoutGrid,
-  BarChart3,
+  ClipboardList,
+  BedSingle,
   Users,
+  UserCog,
+  BarChart3,
   Settings,
-  FileText,
-  ChevronDown,
 } from "lucide-react";
 import logo from "../assets/logo.jpg";
 
 const NAV_ITEMS = [
-  { id: "Dashboard", label: "Dashboard", icon: LayoutGrid },
-  { id: "Reservation", label: "Reservation", icon: BarChart3 },
-  { id: "Capsule", label: "Capsule", icon: Users },
-  { id: "Customers", label: "Customers", icon: FileText },
-  { id: "Staff", label: "Staff", icon: Settings },
-  { id: "Reports", label: "Reports", icon: Settings },
-  { id: "Settings", label: "Settings", icon: Settings },
+  { group: "Overview", items: [{ id: "Dashboard", label: "Dashboard", icon: LayoutGrid }] },
+  {
+    group: "Operations",
+    items: [
+      { id: "Reservation", label: "Reservation", icon: ClipboardList },
+      { id: "Capsule", label: "Capsule", icon: BedSingle },
+      { id: "Customers", label: "Customers", icon: Users },
+    ],
+  },
+  {
+    group: "Management",
+    items: [
+      { id: "Staff", label: "Staff", icon: UserCog },
+      { id: "Reports", label: "Reports", icon: BarChart3 },
+      { id: "Settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
 export default function Sidebar({ active, onNavigate }) {
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-[#003F22]">
-      <div className="flex h-16 items-center gap-2 px-5">
-         <img
-                    src={logo}
-                    alt="Logo"
-                    className="w-8 h-8 object-contain mb-1 rounded-full border-1 border-white"
-          />  
-        <span className="text-sm font-semibold tracking-tight text-white">Forrest Co-working space</span>
+    <aside className="hidden w-[250px] shrink-0 flex-col bg-[#033D22] text-white md:flex">
+      <div className="flex items-center gap-3 px-5 py-5">
+        <img
+          src={logo}
+          alt="Logo"
+          className="h-10 w-10 rounded-full border border-white/30 object-cover"
+        />
+        <div className="leading-tight">
+          <p className="text-sm font-semibold">Forrest co-working space</p>
+          <p className="text-[10px] text-white/60">Admin panel</p>
+        </div>
       </div>
 
-
-      <nav className="flex-1 space-y-4 px-3 py-2">
-        {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
-          const isActive = active === id;
-
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => onNavigate(id)}
-              className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-white  ${
-                isActive
-                  ? "bg-slate-900 font-semibold text-white  "
-                  : "text-slate-500 hover:bg-slate-500 hover:text-white"
-              }`}
-            >
-              <Icon size={17} strokeWidth={2} />
-              {label}
-            </button>
-          );
-        })}
+      <nav className="flex-1 space-y-5 px-3 pt-3">
+        {NAV_ITEMS.map(({ group, items }) => (
+          <div key={group}>
+            <p className="px-3 pb-1.5 text-xs font-medium text-white/55">{group}</p>
+            {items.map(({ id, label, icon: Icon }) => {
+              const isActive = active === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onNavigate(id)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                    isActive ? "bg-[#0A5A35] text-white" : "text-white/85 hover:bg-white/10"
+                  }`}
+                >
+                  <Icon className="h-[18px] w-[18px]" />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
-      <div className="border-t border-slate-200 p-3">
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-100"
-        >
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-xs font-medium">
-            JD
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-slate-900">Jordan Diaz</div>
-            <div className="truncate text-xs text-slate-500">jordan@northline.co</div>
-          </div>
-          <ChevronDown size={14} className="text-slate-400" />
-        </button>
+      <div className="m-4 flex items-center gap-3 border-t border-white/20 pt-4">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2F9E7A] text-xs font-bold">
+          RD
+        </div>
+        <div className="leading-tight">
+          <p className="text-sm font-semibold">Meme Dealdo</p>
+          <p className="text-xs text-white/60">Administrator</p>
+        </div>
       </div>
     </aside>
   );
