@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import Header from "./components/Header.jsx";
-import Sidebar from "./components/sidebar.jsx";
+import Header from "./components/AdminHeader.jsx";
+import Sidebar from "./components/Adminsidebar.jsx";
 
 // Address sa backend server
 const API_URL = "http://localhost:5000";
@@ -33,6 +33,7 @@ function CreateStaffForm({ onCreate }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [createdPassword, setCreatedPassword] = useState("");
 
   // Para sa pag-update sa inputs
   function handleChange(field, value) {
@@ -42,6 +43,7 @@ function CreateStaffForm({ onCreate }) {
   // Mo-run inig click sa "Create account"
   async function handleSubmit(e) {
     e.preventDefault();
+    setCreatedPassword("");
 
     // Check kung naay sulod ang name ug email
     if (!form.name.trim() || !form.email.trim()) {
@@ -57,12 +59,15 @@ function CreateStaffForm({ onCreate }) {
     setError("");
     setSaving(true);
     try {
+      const generatedPassword = !form.password;
+      const password = form.password || generateTempPassword();
       // I-save sa database
       await onCreate({
         name: form.name.trim(),
-        email: form.email.trim(),
-        password: form.password || generateTempPassword(),
+        email: form.email.trim().toLowerCase(),
+        password,
       });
+      if (generatedPassword) setCreatedPassword(password);
       setForm(EMPTY_FORM);
     } catch (err) {
       setError(err.message);
@@ -80,6 +85,12 @@ function CreateStaffForm({ onCreate }) {
       <p className="mt-1 text-xs text-slate-500">
         This creates a login the staff member will use on the website.
       </p>
+
+      {createdPassword && (
+        <div role="status" className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+          Staff account created. Temporary password: <strong>{createdPassword}</strong>
+        </div>
+      )}
 
       {/* Error message */}
       {error && (
@@ -228,7 +239,9 @@ function StaffTable({ staff, onToggleStatus }) {
 export default function StaffAccounts() {
   const navigate = useNavigate();
   const location = useLocation();
-  const active = location.pathname === "/management" ? "Management" : "Dashboard";
+  const active = location.pathname === "/management" || location.pathname === "/staff-management"
+    ? "Staff Management"
+    : "Dashboard";
 
   const [staff, setStaff] = useState([]); // listahan sa staff
   const [loadError, setLoadError] = useState(""); // error kung dili ma-load
@@ -277,7 +290,7 @@ export default function StaffAccounts() {
       navigate("/customers");
       return;
     }
-    if (section === "Management") {
+    if (section === "Management" || section === "Staff Management") {
       navigate("/management");
       return;
     }

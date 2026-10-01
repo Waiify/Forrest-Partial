@@ -31,9 +31,9 @@ const User = mongoose.model('User', new mongoose.Schema({
   status:    { type: String, enum: ['active', 'disabled'], default: 'active' },
 }, { timestamps: true }), 'Users');
 
-// ------------------------------------------------------------
+
 // CUSTOMERS (para sa Customers page)
-// ------------------------------------------------------------
+
 app.get('/api/users', async (req, res) => {
   try {
     const users = await User.find({ role: 'customer' })
@@ -49,7 +49,7 @@ app.get('/api/users', async (req, res) => {
 
 // ------------------------------------------------------------
 // STAFF (para sa Management page)
-// ------------------------------------------------------------
+
 
 // Himuon ang user document nga parehas sa gi-expect sa Management.jsx
 const toStaff = (u) => ({
@@ -131,9 +131,8 @@ app.patch('/api/staff/:id', async (req, res) => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// ------------------------------------------------------------
+
 // AUTH
-// ------------------------------------------------------------
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { firstName, lastName, email, username, password } = req.body;
@@ -160,7 +159,8 @@ app.post('/api/auth/signup', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password, adminCode } = req.body;
-    const user = await User.findOne({ email: (email || '').toLowerCase() });
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail });
     const ok = user && user.password && await bcrypt.compare(password, user.password);
 
     if (!ok) return res.status(401).json({ message: 'Invalid email or password' });
@@ -170,13 +170,23 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(403).json({ message: 'This account has been disabled' });
     }
 
+    const staffEmails = new Set(
+      (process.env.STAFF_EMAILS || '')
+        .split(',')
+        .map((staffEmail) => staffEmail.trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const role = staffEmails.has(normalizedEmail) ? 'staff' : user.role;
+
     // Admin: kinahanglan pa gihapon ang admin code
-    if (user.role === 'admin') {
+    if (role === 'admin') {
       if (!adminCode) return res.json({ requiresAdminCode: true });
       if (adminCode !== process.env.ADMIN_CODE) {
         return res.status(401).json({ message: 'Invalid admin code' });
       }
     }
+
+      
 
     res.json({
       user: {
@@ -185,7 +195,7 @@ app.post('/api/auth/login', async (req, res) => {
         lastName: user.lastName,
         email: user.email,
         username: user.username,
-        role: user.role,
+        role,
       },
     });
   } catch (err) {

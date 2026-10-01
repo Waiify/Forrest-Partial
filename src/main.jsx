@@ -8,9 +8,14 @@ import StaffSignup from './staffSignup.jsx'
 import CustomerSignUp from './CustomerSignUp.jsx'
 import ResetPassword from './customerResetpass.jsx'
 import VerifyCode from './customerVerification.jsx'
-import Dashboard from './dashboard.jsx'
+import Dashboard from './admindashboard.jsx'
 import Customers from './Customers.jsx'
 import Management from './Management.jsx'
+import AdminCapsule from './admincapsule.jsx'
+import StaffDashboard from './StaffDashboard.jsx'
+import StaffCapsuleManagement from './StaffCapsuleManagement.jsx'
+import StaffCapsuleAvailability from './StaffCapsuleAvailability.jsx'
+
 
 
 createRoot(document.getElementById('root')).render(
@@ -38,14 +43,20 @@ createRoot(document.getElementById('root')).render(
 
         {/* Dashboard and customer pages / Dashboard ug customer pages. */}
         <Route path="/dashboard" element={<Dashboard />} />
-        {/* PLACEHOLDER: gamit pa ang Dashboard. Ilisi sa <StaffDashboard /> kung nahimo na. */}
-        <Route path="/staff-dashboard" element={<Dashboard />} />
+        <Route path="/adminDashboard" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/staff-dashboard" element={<StaffDashboard />} />
+        <Route path="/StaffDashboard" element={<StaffDashboard />} />
+        <Route path="/StaffCapsuleManagement" element={<StaffCapsuleManagement />} />
+        <Route path="/StaffCapsuleAvailability" element={<StaffCapsuleAvailability />} />
         <Route path="/customers" element={<Customers />} />
 
         {/* Management pages / Pages para sa management. */}
         <Route path="/management" element={<Management />} />
         <Route path="/staff-management" element={<Management />} />
-        <Route path="/file-management" element={<Management />} />
+        
+        <Route path="/capsule" element={<AdminCapsule />} />
+        <Route path="/capsules" element={<Navigate to="/capsule" replace />} />
+        <Route path="/admincapsule" element={<AdminCapsule />} />
 
         {/* Fallback route / If no route matches, go back to login page. */}
         <Route path="*" element={<Navigate to="/login" replace />} />

@@ -1,6 +1,6 @@
 import { Bell, Search } from "lucide-react";
 
-export default function Header({ active }) {
+export default function staffHeader({ active }) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
       <h1 className="text-lg font-semibold capitalize">{active}</h1>
@@ -15,7 +15,7 @@ export default function Header({ active }) {
             type="text"
             placeholder="Search"
             aria-label="Search"
-            className="w-56 rounded-md border border-slate-200 bg-slate-50 py-1.5 pl-9 pr-3 text-sm outline-none focus:border-slate-400"
+            className="w-56 rounded-xl border border-slate-200 bg-slate-50 py-1.5 pl-9 pr-3 text-sm outline-none focus:border-slate-400"
           />
         </div>
 
