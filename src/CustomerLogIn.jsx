@@ -23,7 +23,6 @@ const demoLogin = (user) => {
   sessionStorage.setItem('user', JSON.stringify(safeUser))
   return safeUser
 }
-
 // Stores information in the database
 function CustomerLogIn() {
   const [formData, setFormData] = useState({
@@ -139,20 +138,8 @@ const handleGoogleLogin = async () => {
       sessionStorage.setItem('user', JSON.stringify(data.user))
       setStatus({ loading: false, error: '', success: 'Logged in successfully!' })
       navigate('/dashboard')
-    } catch {
-      const fallbackUser = demoLogin({
-        firstName: formData.email.split('@')[0] || 'Demo',
-        lastName: 'Customer',
-        email: formData.email,
-        username: formData.email.split('@')[0],
-      })
-
-      setStatus({
-        loading: false,
-        error: '',
-        success: `Logged in successfully as ${fallbackUser.firstName}!`,
-      })
-      navigate('/dashboard')
+    } catch (err) {
+      setStatus({ loading: false, error: err.message, success: '' })
     }
   }
    
@@ -266,7 +253,7 @@ const handleGoogleLogin = async () => {
               <div className="flex-1 h-px bg-gray-200" />
             </div>
 
-            /* Google Login Button */
+           
             <button
               type="button"
               onClick={handleGoogleLogin}
