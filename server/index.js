@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const admin = require('firebase-admin');
 
+
 admin.initializeApp({
   credential: admin.cert(require('./serviceAccountKey.json')),
 });
@@ -17,6 +18,7 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('Connection error:', err));
 
+// USER MODEL
 const User = mongoose.model('User', new mongoose.Schema({
   firstName: { type: String, required: true },
   lastName:  { type: String, required: true },
@@ -25,8 +27,13 @@ const User = mongoose.model('User', new mongoose.Schema({
   password:  { type: String, required: function () { return !this.googleId; } },
   googleId:  { type: String, unique: true, sparse: true },
   role:      { type: String, enum: ['customer', 'staff', 'admin'], default: 'customer' },
-}, { timestamps: true }));
+  // NEW: para sa Disable / Enable sa Management page
+  status:    { type: String, enum: ['active', 'disabled'], default: 'active' },
+}, { timestamps: true }), 'Users');
 
+// ------------------------------------------------------------
+// CUSTOMERS (para sa Customers page)
+// ------------------------------------------------------------
 app.get('/api/users', async (req, res) => {
   try {
     const users = await User.find({ role: 'customer' })
@@ -40,8 +47,93 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+// ------------------------------------------------------------
+// STAFF (para sa Management page)
+// ------------------------------------------------------------
+
+// Himuon ang user document nga parehas sa gi-expect sa Management.jsx
+const toStaff = (u) => ({
+  _id: u._id,
+  name: `${u.firstName} ${u.lastName}`.trim(),
+  email: u.email,
+  status: u.status || 'active',
+  createdAt: u.createdAt,
+});
+
+// GET: staff accounts ra (role = staff)
+app.get('/api/staff', async (req, res) => {
+  try {
+    const staff = await User.find({ role: 'staff' }).sort({ createdAt: -1 });
+    res.json(staff.map(toStaff));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST: maghimo og bag-ong staff account
+app.post('/api/staff', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password || password.length < 8) {
+      return res.status(400).json({ message: 'Name, email and an 8+ character password are required' });
+    }
+
+    const lowerEmail = email.toLowerCase();
+    if (await User.findOne({ email: lowerEmail })) {
+      return res.status(409).json({ message: 'Email already in use' });
+    }
+
+    // Bahinon ang full name: first name ug last name
+    const [firstName, ...rest] = name.trim().split(' ');
+
+    // Maghimo og unique username gikan sa email
+    const base = lowerEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || 'staff';
+    let username = base, n = 0;
+    while (await User.exists({ username })) username = base + (++n);
+
+    const user = await User.create({
+      firstName,
+      lastName: rest.join(' ') || '-',
+      email: lowerEmail,
+      username,
+      password: await bcrypt.hash(password, 10),
+      role: 'staff',      // server ang mo-set, dili ang browser
+      status: 'active',
+    });
+
+    res.status(201).json(toStaff(user));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// PATCH: i-disable o i-enable ang staff (staff accounts ra)
+app.patch('/api/staff/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['active', 'disabled'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+    const user = await User.findOneAndUpdate(
+      { _id: req.params.id, role: 'staff' },
+      { status },
+      { returnDocument: 'after' }
+    );
+    if (!user) return res.status(404).json({ message: 'Not found' });
+    res.json(toStaff(user));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// ------------------------------------------------------------
+// AUTH
+// ------------------------------------------------------------
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { firstName, lastName, email, username, password } = req.body;
@@ -63,13 +155,28 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
+// UNIFIED LOGIN: usa ra ka login para sa customer, staff, ug admin
+// Ang server ang mo-determine sa role base sa database.
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, adminCode } = req.body;
     const user = await User.findOne({ email: (email || '').toLowerCase() });
-    const ok = user && await bcrypt.compare(password, user.password);
+    const ok = user && user.password && await bcrypt.compare(password, user.password);
 
     if (!ok) return res.status(401).json({ message: 'Invalid email or password' });
+
+    // Dili makasulod ang disabled nga account
+    if (user.status === 'disabled') {
+      return res.status(403).json({ message: 'This account has been disabled' });
+    }
+
+    // Admin: kinahanglan pa gihapon ang admin code
+    if (user.role === 'admin') {
+      if (!adminCode) return res.json({ requiresAdminCode: true });
+      if (adminCode !== process.env.ADMIN_CODE) {
+        return res.status(401).json({ message: 'Invalid admin code' });
+      }
+    }
 
     res.json({
       user: {
@@ -78,65 +185,12 @@ app.post('/api/auth/login', async (req, res) => {
         lastName: user.lastName,
         email: user.email,
         username: user.username,
+        role: user.role,
       },
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
-  }
-});
-app.post('/api/auth/admin-login', async (req, res) => {
-  try {
-    const { email, password, adminCode } = req.body;
-
-    const user = await User.findOne({
-      email: (email || '').toLowerCase()
-    });
-
-    if (!user) {
-      return res.status(401).json({
-        message: 'Invalid email or password'
-      });
-    }
-
-    const passwordOk = await bcrypt.compare(password, user.password);
-
-    if (!passwordOk) {
-      return res.status(401).json({
-        message: 'Invalid email or password'
-      });
-    }
-
-    if (user.role !== 'admin') {
-      return res.status(403).json({
-        message: 'This account is not an administrator'
-      });
-    }
-
-        if (adminCode !== process.env.ADMIN_CODE) {
-      console.log('SUBMITTED:', JSON.stringify(adminCode));
-      console.log('EXPECTED:', JSON.stringify(process.env.ADMIN_CODE));
-      return res.status(401).json({
-        message: 'Invalid admin code'
-      });
-    }
-
-    res.json({
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        username: user.username,
-        role: user.role
-      }
-    });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      message: 'Server error'
-    });
   }
 });
 
@@ -164,6 +218,16 @@ app.post('/api/auth/google-sync', async (req, res) => {
     } else if (!user.googleId) {
       user.googleId = decoded.uid;
       await user.save();
+    }
+
+    // Google sign-in para sa customers ra (staff/admin kinahanglan email + password)
+    if (user.role !== 'customer') {
+      return res.status(403).json({ message: 'Staff and admin accounts must log in with email and password' });
+    }
+
+    // Dili makasulod ang disabled nga account
+    if (user.status === 'disabled') {
+      return res.status(403).json({ message: 'This account has been disabled' });
     }
 
     res.json({

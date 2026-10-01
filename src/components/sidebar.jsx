@@ -8,16 +8,21 @@ import {
 } from "lucide-react";
 import logo from "../assets/logo.jpg";
 
+// List of sidebar buttons / Lista sa sidebar buttons.
+// Each item has an ID and a label used for navigation.
+// Ang matag item adunay ID ug label para sa pag-navigate sa page.
 const NAV_ITEMS = [
   { id: "Dashboard", label: "Dashboard", icon: LayoutGrid },
   { id: "Reservation", label: "Reservation", icon: BarChart3 },
   { id: "Capsule", label: "Capsule", icon: Users },
   { id: "Customers", label: "Customers", icon: FileText },
-  { id: "Staff", label: "Staff", icon: Settings },
+  { id: "Staff Management", label: "Staff Management", icon: Settings },
   { id: "Reports", label: "Reports", icon: Settings },
   { id: "Settings", label: "Settings", icon: Settings },
 ];
 
+// This renders the sidebar and sends the clicked section back to the parent page.
+// Kini ang code nga nag-render sa sidebar ug ipadala ang gi-click nga section balik sa parent page.
 export default function Sidebar({ active, onNavigate }) {
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-[#003F22]">

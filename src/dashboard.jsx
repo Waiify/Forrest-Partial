@@ -175,16 +175,33 @@ export default function Dashboard() {
   const location = useLocation();
   const [rooms, setRooms] = useState(INITIAL_ROOMS);
 
-  const active = location.pathname === "/customers" ? "Customers" : "Dashboard";
+  // This checks the current URL so the selected sidebar button can stay highlighted.
+  // Kini ang code nga nag-check sa current URL para mag-highlight ang active sidebar button.
+  const isManagementPage =
+    location.pathname === "/management" || location.pathname === "/staff-management" || location.pathname === "/file-management";
 
+  const active =
+    location.pathname === "/customers"
+      ? "Customers"
+      : isManagementPage
+        ? "Staff Management"
+        : "Dashboard";
+
+  // This function decides which page to open when a sidebar button is clicked.
+  // Kini ang function nga nagdesisyon unsa nga page ang mabuksan kapag gipindot ang sidebar button.
   function handleNavigate(section) {
     if (section === "Customers") {
       navigate("/customers");
       return;
     }
+    if (section === "Staff Management" || section === "Management") {
+      navigate("/staff-management");
+      return;
+    }
     navigate("/dashboard");
   }
 
+  // I-update ang capsule status sa local state kung giusab sa user.
   function handleChangeStatus(roomId, status) {
     setRooms((prev) => prev.map((r) => (r.id === roomId ? { ...r, status } : r)));
     // TODO: persist the change, e.g. fetch(`/api/rooms/${roomId}`, { method: "PATCH", body: JSON.stringify({ status }) })

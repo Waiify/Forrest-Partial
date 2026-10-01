@@ -88,10 +88,23 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const active = location.pathname === "/customers" ? "Customers" : "Dashboard";
+  const isManagementPage =
+    location.pathname === "/management" ||
+    location.pathname === "/staff-management" ||
+    location.pathname === "/file-management";
+
+  const active = location.pathname === "/customers" ? "Customers" : isManagementPage ? "Staff Management" : "Dashboard";
 
   function handleNavigate(section) {
-    navigate(section === "Customers" ? "/customers" : "/dashboard");
+    if (section === "Customers") {
+      navigate("/customers");
+      return;
+    }
+    if (section === "Staff Management" || section === "Management") {
+      navigate("/staff-management");
+      return;
+    }
+    navigate("/dashboard");
   }
 
   useEffect(() => {
