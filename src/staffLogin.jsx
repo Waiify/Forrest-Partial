@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Eye, EyeOff, Mail, Lock, KeyRound } from 'lucide-react'
 import './index.css'
+import ReCAPTCHA from 'react-google-recaptcha'
 import { useNavigate } from 'react-router-dom'
 import googleImage from './assets/G-logo.png'
 import logoImage from './assets/logo.jpg'
@@ -19,8 +20,41 @@ function StaffLogin() {
   const [showPassword, setShowPassword] = useState(false)
   const [status, setStatus] = useState({ loading: false, error: '', success: '' })
 
+  const recaptchaRef = useRef(null)
+  const [captchaToken, setCaptchaToken] = useState(null)
+
+  // Returns ok:true only if the CAPTCHA was ticked and Google confirmed it
+  const verifyCaptcha = async () => {
+    if (!captchaToken) {
+      return { ok: false, message: 'Please complete the CAPTCHA.' }
+    }
+    try {
+      const res = await fetch('http://localhost:5000/verify-captcha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: captchaToken }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        recaptchaRef.current?.reset()
+        setCaptchaToken(null)
+        return { ok: false, message: 'CAPTCHA failed. Please try again.' }
+      }
+      return { ok: true }
+    } catch (err) {
+      console.error('Captcha fetch error:', err)
+      return { ok: false, message: 'Could not verify CAPTCHA. Please try again.' }
+    }
+  }
+
     const handleGoogleLogin = async () => {
     try {
+      const captcha = await verifyCaptcha()
+      if (!captcha.ok) {
+        alert(captcha.message)
+        return
+      }
+
       const result = await signInWithPopup(auth, googleProvider)
       const idToken = await result.user.getIdToken()
 
@@ -44,6 +78,7 @@ function StaffLogin() {
       alert("Google login failed. Please try again.")
     }
   }
+
   /* handles changes when the user inputs in the fields */
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -57,10 +92,18 @@ function StaffLogin() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
+    const captcha = await verifyCaptcha()
+    if (!captcha.ok) {
+      setStatus({ loading: false, error: captcha.message, success: '' })
+      return
+    }
+
+
     setStatus({ loading: true, error: '', success: '' })
 
     try {
-      // Step 1: check email + password
+
       const loginRes = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,7 +116,7 @@ function StaffLogin() {
         throw new Error('This account is not a staff account')
       }
 
-      // Step 2: check the staff code using the temporary token from step 1
+     
       const codeRes = await fetch('http://localhost:5000/api/auth/staff-code', {
         method: 'POST',
         headers: {
@@ -108,7 +151,7 @@ function StaffLogin() {
     >
       <div className="absolute inset-0 bg-black/10 pointer-events-none"></div>
 
-      {/* container for left and right card */}
+      {/* container sa  left and right card */}
       <div className="relative w-full max-w-5xl h-[600px] flex flex-col md:flex-row items-stretch bg-white/95 rounded-2xl shadow-xl overflow-hidden border border-green-950">
 
         {/* left card */}
@@ -177,6 +220,16 @@ function StaffLogin() {
                   className={inputClass}
                 />
               </div>
+            </div>
+            <div className="flex justify-center" style={{height:66}}>
+            <div style={{ transform: 'scale(0.85)', transformOrigin: 'top center' }}>
+            <ReCAPTCHA
+                  ref={recaptchaRef}
+                  sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
+                  onChange={(token) => setCaptchaToken(token)}
+                  onExpired={() => setCaptchaToken(null)}
+                />
+            </div>
             </div>
 
             {status.error && (

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Eye, EyeOff, Mail, Lock, KeyRound } from 'lucide-react'
 import './index.css'
+import ReCAPTCHA from 'react-google-recaptcha'
 import { useNavigate } from 'react-router-dom'
 import googleImage from './assets/G-logo.png'
 import logoImage from './assets/logo.jpg'
@@ -18,7 +19,34 @@ function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false)
   const [status, setStatus] = useState({ loading: false, error: '', success: '' })
 
-  /* handles changes when the user inputs in the fields */
+    const recaptchaRef = useRef(null)
+  const [captchaToken, setCaptchaToken] = useState(null)
+
+  // this returns ok meaning, true only if the CAPTCHA was ticked and Google confirmed it
+  const verifyCaptcha = async () => {
+    if (!captchaToken) {
+      return { ok: false, message: 'Please complete the CAPTCHA.' }
+    }
+    try {
+      const res = await fetch('http://localhost:5000/verify-captcha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: captchaToken }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        recaptchaRef.current?.reset()
+        setCaptchaToken(null)
+        return { ok: false, message: 'CAPTCHA failed. Please try again.' }
+      }
+      return { ok: true }
+    } catch (err) {
+      console.error('Captcha fetch error:', err)
+      return { ok: false, message: 'Could not verify CAPTCHA. Please try again.' }
+    }
+  }
+
+  //this handles changes when the user inputs in the fields 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
     setFormData({
@@ -29,6 +57,16 @@ function AdminLogin() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setStatus({ loading: true, error: '', success: '' })
+
+    // Verify CAPTCHA 
+    const captchaResult = await verifyCaptcha()
+    if (!captchaResult.ok) {
+      setStatus({ loading: false, error: captchaResult.message, success: '' })
+      return
+    }
+
+
     setStatus({ loading: true, error: '', success: '' })
 
     try {
@@ -42,7 +80,7 @@ function AdminLogin() {
       if (!res.ok) throw new Error(data.message || 'Login failed')
 
       setStatus({ loading: false, error: '', success: 'Logged in successfully!' })
-      navigate('/dashboard')   // change this path if Dashboard.jsx is routed elsewhere
+      navigate('/dashboard')  
     } catch (err) {
       setStatus({ loading: false, error: err.message, success: '' })
     }
@@ -133,7 +171,16 @@ function AdminLogin() {
                 />
               </div>
             </div>
-
+                        <div className="flex justify-center" style={{ height: 66 }}>
+              <div style={{ transform: 'scale(0.85)', transformOrigin: 'top center' }}>
+                <ReCAPTCHA
+                  ref={recaptchaRef}
+                  sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
+                  onChange={(token) => setCaptchaToken(token)}
+                  onExpired={() => setCaptchaToken(null)}
+                />
+              </div>
+            </div>
             {status.error && (
               <p className="signup-error text-xs text-red-600">{status.error}</p>
             )}

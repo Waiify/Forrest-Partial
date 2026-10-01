@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import {useRef, useState } from 'react'
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react'
 import { useNavigate, Link } from 'react-router-dom'
 import './index.css'
+import ReCAPTCHA from "react-google-recaptcha";
 import { signInWithPopup } from 'firebase/auth'
 import { auth, googleProvider } from './firebase'
 import backgroundImage from './assets/page_background.jpg'
@@ -16,32 +17,65 @@ function CustomerLogIn() {
   })
   const navigate = useNavigate()
 
-  const handleGoogleLogin = async () => {
-    try {
-      const result = await signInWithPopup(auth, googleProvider)
-      const idToken = await result.user.getIdToken()
+  const recaptchaRef = useRef(null)
+  const [captchaToken, setCaptchaToken] = useState(null)
 
-      const res = await fetch('http://localhost:5000/api/auth/google-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message || 'Google login failed')
+// CAPTCHA verification function ni to ensure nga user completed the CAPTCHA ayha mo login
+  const verifyCaptcha = async () => {
+    if (!captchaToken) {
+      return { ok: false, message: 'Please complete the CAPTCHA.' }
+  }
+  try {
+    const res = await fetch('http://localhost:5000/verify-captcha', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: captchaToken }),
+    })
+    const data = await res.json()
+    if (!data.success) {
+      recaptchaRef.current?.reset()
+      setCaptchaToken(null)
+      return { ok: false, message: 'CAPTCHA failed. Please try again.' }
+    }
+    return { ok: true }
+  } catch {
+    return { ok: false, message: 'Could not verify CAPTCHA. Please try again.' }
+  }
+}
 
-      if (data.needsStaffCode) {
-        sessionStorage.setItem('pendingToken', data.tempToken)
-        navigate('/StaffCode')
-        return
-      }
-      if (data.needsAdminCode) {
-        alert('Admins must sign in on the admin page.')
-        return
-      }
+const handleGoogleLogin = async () => {
+  const captcha = await verifyCaptcha()
+  if (!captcha.ok) {
+    alert(captcha.message)
+    return
+  }
 
-      sessionStorage.setItem('token', data.token)
-      sessionStorage.setItem('user', JSON.stringify(data.user))
-      navigate('/dashboard')
+  
+  try {
+    const result = await signInWithPopup(auth, googleProvider)
+    const idToken = await result.user.getIdToken()
+
+    const res = await fetch('http://localhost:5000/api/auth/google-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || 'Google login failed')
+
+    if (data.needsStaffCode) {
+      sessionStorage.setItem('pendingToken', data.tempToken)
+      navigate('/StaffCode')
+      return
+    }
+    if (data.needsAdminCode) {
+       alert('Admins must sign in on the admin page.')
+      return
+   }
+
+    sessionStorage.setItem('token', data.token)
+    sessionStorage.setItem('user', JSON.stringify(data.user))
+    navigate('/dashboard')
     } catch (error) {
       console.error("Google login error:", error)
       alert("Google login failed. Please try again.")
@@ -62,8 +96,15 @@ function CustomerLogIn() {
 
    const handleSubmit = async (e) => {
     e.preventDefault()
-    setStatus({ loading: true, error: '', success: '' })
 
+  const captcha = await verifyCaptcha()
+  if (!captcha.ok) {
+    setStatus({ loading: false, error: captcha.message, success: '' })
+    return
+  }
+
+  setStatus({ loading: true, error: '', success: '' })
+  
     try {
       const res = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
@@ -87,14 +128,14 @@ function CustomerLogIn() {
       setStatus({ loading: false, error: err.message, success: '' })
     }
   }
-
+   
   const inputClass =
     "w-full border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-green-800"
 
   return (
     <div
-      className="h-screen w-full flex items-center justify-center p-6"
-      style={{
+    className="min-h-screen w-full flex items-center justify-center p-6"
+    style={{
         backgroundImage: `url(${backgroundImage})`,
         backgroundSize: "cover",
         backgroundAttachment: "fixed",
@@ -104,19 +145,19 @@ function CustomerLogIn() {
       <div className="absolute inset-0 bg-black/10 pointer-events-none"></div>
 
       {/* container for left and right card */}
-      <div className="relative w-full max-w-5xl h-[600px] flex flex-col md:flex-row items-stretch bg-white/95 rounded-2xl shadow-xl overflow-hidden border border-green-950">
+      <div className="relative w-full max-w-5xl min-h-[600px] flex flex-col md:flex-row items-stretch bg-white/95 rounded-2xl shadow-xl overflow-hidden border border-green-950">
 
         {/* left card */}
         <div style={{ flex: 0.8 }} className="login-left-card relative bg-white/90 rounded-2xl p-8 md:p-6 flex flex-col justify-center">
 
-          <h2 className="text-2xl font-bold text-green-800 mb-1 -mt-13">Welcome back, Customer!</h2>
-          <p className="text-sm text-gray-500 mt-2 mb-9">
+          <h2 className="text-2xl font-bold text-green-800 mb-1">Welcome back, Customer!</h2>
+          <p className="text-sm text-gray-500 mt-2 mb-4">
             Enter your credentials to continue to your study space!
           </p>
 
           <form onSubmit={handleSubmit} className="login-form flex flex-col gap-3">
 
-            <div className="flex flex-col gap-2 mb-5 mt-4">
+            <div className="flex flex-col gap-2 mb-2 mt-2">
               <label htmlFor="email" className="text-xs font-semibold text-green-800">Email</label>
               <div className="relative">
                 <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -157,7 +198,7 @@ function CustomerLogIn() {
               </div>
             </div>
 
-            <div className="flex justify-end mb-6">
+            <div className="flex justify-end mb-2">
               <Link
                 to="/reset-password"
                 className="text-xs font-medium text-green-800 hover:underline"
@@ -165,6 +206,17 @@ function CustomerLogIn() {
                 Forgot Password?
               </Link>
             </div>
+              
+            <div className="flex justify-center mb-2" style={{ height: 66 }}>
+              <div style={{ transform: 'scale(0.85)', transformOrigin: 'top center' }}>
+                <ReCAPTCHA
+                   ref={recaptchaRef}
+                   sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
+                   onChange={(token) => setCaptchaToken(token)}
+                   onExpired={() => setCaptchaToken(null)}
+                 />
+            </div>
+          </div>
 
             {status.error && (
               <p className="signup-error text-xs text-red-600">{status.error}</p>
@@ -187,7 +239,7 @@ function CustomerLogIn() {
               <div className="flex-1 h-px bg-gray-200" />
             </div>
 
-            {/* Google Login Button */}
+            /* Google Login Button */
             <button
               type="button"
               onClick={handleGoogleLogin}

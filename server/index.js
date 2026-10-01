@@ -1,13 +1,26 @@
+const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const admin = require('firebase-admin');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const nodemailer = require('nodemailer');   
+const crypto = require('crypto');           
 
-admin.initializeApp({
-  credential: admin.cert(require('./serviceAccountKey.json')),
+console.log("EMAIL_USER:", process.env.EMAIL_USER);
+console.log("EMAIL_PASS exists:", !!process.env.EMAIL_PASS);
+console.log("EMAIL_PASS length:", process.env.EMAIL_PASS?.length);
+const transporter = nodemailer.createTransport({  
+  service: 'gmail',
+  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
+
+const adminApp = initializeApp({
+  credential: cert(require('./serviceAccountKey.json')),
+});
+
 
 const app = express();
 app.use(cors());
@@ -25,7 +38,13 @@ const User = mongoose.model('User', new mongoose.Schema({
   password:  { type: String, required: function () { return !this.googleId; } },
   googleId:  { type: String, unique: true, sparse: true },
   role:      { type: String, enum: ['customer', 'staff', 'admin'], default: 'customer' },
+  resetCodeHash:     { type: String },
+  resetCodeExpires:  { type: Date },
+  resetAttempts:     { type: Number, default: 0 },
+  resetTokenHash:    { type: String },
+  resetTokenExpires: { type: Date },
 }, { timestamps: true }));
+
 
 app.get('/api/users', async (req, res) => {
   try {
@@ -42,6 +61,27 @@ app.get('/api/users', async (req, res) => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// reCAPTCHA
+app.post('/verify-captcha', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ success: false });
+
+  try {
+    const params = new URLSearchParams({
+      secret: process.env.RECAPTCHA_SECRET,
+      response: token,
+    });
+    const r = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      body: params,
+    });
+    const data = await r.json();
+    res.json({ success: data.success });
+  } catch (err) {
+    console.error('Captcha error:', err);
+    res.status(500).json({ success: false });
+  }
+});
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { firstName, lastName, email, username, password } = req.body;
@@ -140,10 +180,10 @@ app.post('/api/auth/admin-login', async (req, res) => {
   }
 });
 
-// GOOGLE SYNC: verifies the Firebase sign-in, then creates or finds the matching MongoDB user
+
 app.post('/api/auth/google-sync', async (req, res) => {
   try {
-    const decoded = await admin.auth().verifyIdToken(req.body.idToken);
+   const decoded = await getAuth().verifyIdToken(req.body.idToken);
     if (!decoded.email_verified) return res.status(401).json({ message: 'Email not verified' });
 
     const email = decoded.email.toLowerCase();
@@ -182,6 +222,102 @@ app.post('/api/auth/google-sync', async (req, res) => {
   }
 });
 
+// mag send ug 6 digit code sa user's email
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const genericReply = { message: 'If that email has an account, a code has been sent.' };
+  try {
+    const email = (req.body.email || '').toLowerCase().trim();
+    const user = await User.findOne({ email });
+
+    if (!user || !user.password) return res.json(genericReply);
+
+    const code = String(crypto.randomInt(100000, 1000000));
+    user.resetCodeHash = await bcrypt.hash(code, 10);
+    user.resetCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
+    user.resetAttempts = 0;
+    user.resetTokenHash = undefined;
+    user.resetTokenExpires = undefined;
+    await user.save();
+
+    await transporter.sendMail({
+      from: `"Forrest" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: 'Your Forrest password reset code',
+      text: `Your verification code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore this email.`,
+    });
+
+    res.json(genericReply);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Could not send the code. Please try again.' });
+  }
+});
+
+// e verify or check ang codenga gi send sa email
+app.post('/api/auth/verify-reset-code', async (req, res) => {
+  try {
+    const email = (req.body.email || '').toLowerCase().trim();
+    const code = String(req.body.code || '');
+    const user = await User.findOne({ email });
+
+    const invalid = () => res.status(400).json({ message: 'Invalid or expired code' });
+
+    if (!user || !user.resetCodeHash || user.resetCodeExpires < new Date()) return invalid();
+    if (user.resetAttempts >= 5) {
+      return res.status(429).json({ message: 'Too many attempts. Request a new code.' });
+    }
+
+    const ok = await bcrypt.compare(code, user.resetCodeHash);
+    if (!ok) {
+      user.resetAttempts += 1;
+      await user.save();
+      return invalid();
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    user.resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+    user.resetTokenExpires = new Date(Date.now() + 10 * 60 * 1000);
+    user.resetCodeHash = undefined;
+    user.resetCodeExpires = undefined;
+    await user.save();
+
+    res.json({ resetToken });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// mag set ug new password
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const email = (req.body.email || '').toLowerCase().trim();
+    const { resetToken, newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters' });
+    }
+
+    const user = await User.findOne({ email });
+    const tokenHash = crypto.createHash('sha256').update(String(resetToken || '')).digest('hex');
+
+    if (!user || !user.resetTokenHash || user.resetTokenExpires < new Date() ||
+        user.resetTokenHash !== tokenHash) {
+      return res.status(400).json({ message: 'Reset session expired. Please start again.' });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.resetTokenHash = undefined;
+    user.resetTokenExpires = undefined;
+    user.resetAttempts = 0;
+    await user.save();
+
+    res.json({ message: 'Password updated' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 process.on('unhandledRejection', (reason) => {
   console.error('UNHANDLED REJECTION:', reason);
 });
