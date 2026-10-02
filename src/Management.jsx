@@ -290,6 +290,10 @@ export default function StaffAccounts() {
       navigate("/customers");
       return;
     }
+    if (section === "Capsule") {
+      navigate("/capsule");
+      return;
+    }
     if (section === "Management" || section === "Staff Management") {
       navigate("/management");
       return;

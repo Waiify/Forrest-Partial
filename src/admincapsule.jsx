@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
@@ -7,54 +7,49 @@ import {
   ChevronDown,
   Plus,
   X,
-  Trash2,
+  Archive,
+  RotateCcw,
 } from "lucide-react";
 
+// Address sa backend server
+const API = "http://localhost:5000/api";
 
 /* Capsule status colors */
+// Ang mga ngalan kinahanglan parehas sa gi-save sa database
 const STATUS = {
   Available: { dot: "bg-[#2F9E7A]", tile: "bg-[#86D0BB]", text: "text-[#0B3B2A]" },
-  Occupied: { dot: "bg-[#A66BE6]", tile: "bg-[#B27DEB]", text: "text-[#2C1250]" },
   Reserved: { dot: "bg-[#EDB04F]", tile: "bg-[#F0B65A]", text: "text-[#4A3208]" },
-  Maintenance: { dot: "bg-[#DC5F5F]", tile: "bg-[#E06666]", text: "text-[#4A1010]" },
+  Occupied: { dot: "bg-[#A66BE6]", tile: "bg-[#B27DEB]", text: "text-[#2C1250]" },
+  "Coming Soon": { dot: "bg-[#E5D04F]", tile: "bg-[#EAD86D]", text: "text-[#4A430F]" },
+  "Under Maintenance": { dot: "bg-[#DC5F5F]", tile: "bg-[#E06666]", text: "text-[#4A1010]" },
 };
 
 /* Capsule types */
-const ROOM_TYPES = ["Standard", "Premium", "Family"];
-
-/* Sample capsule data */
-const SEED = [
-  ["R-01", "Standard", "Available", 450],
-  ["R-02", "Standard", "Reserved", 450],
-  ["R-03", "Premium", "Occupied", 650],
-  ["R-04", "Premium", "Occupied", 650],
-  ["R-05", "Standard", "Available", 450],
-  ["R-06", "Family", "Reserved", 900],
-  ["R-07", "Family", "Reserved", 900],
-  ["R-08", "Premium", "Maintenance", 650],
-  ["R-09", "Standard", "Available", 450],
-  ["R-10", "Standard", "Reserved", 450],
-  ["R-11", "Premium", "Occupied", 650],
-  ["R-12", "Standard", "Available", 450],
-].map(([code, type, status, rate], i) => ({
-  id: i + 1,
-  code,
-  type,
-  status,
-  rate,
-  floor: i < 6 ? 1 : 2,
-  notes: "",
-}));
+// Standard ug Premium ra ang gitugot sa database
+const ROOM_TYPES = ["Standard", "Premium"];
 
 /* Empty form values */
+// Gi-usab: id, code (capsule name), rate (per hour), room. Wala na ang notes
 const EMPTY_FORM = {
+  id: "",
   code: "",
   type: "Standard",
   status: "Available",
   rate: "",
-  floor: 1,
-  notes: "",
+  room: "Room 1",
 };
+
+// I-convert ang database document ngadto sa row nga gamiton sa page
+function toRow(c) {
+  return {
+    id: c.capsuleId,
+    code: c.capsuleName,
+    type: c.type,
+    status: c.status,
+    rate: c.pricePerHour,
+    room: c.room || "Room 1",
+  };
+}
 
 
 /* Dropdown box */
@@ -94,10 +89,14 @@ const inputCls =
 
 
 /* Add or edit capsule window */
-function CapsuleModal({ capsule, existingCodes, onSave, onDelete, onClose }) {
+// Gi-usab: Delete nahimong Archive/Restore kay archive ang naa sa backend
+function CapsuleModal({ capsule, existingIds, isArchivedTab, onSave, onArchive, onClose }) {
   /* Check the editing*/
   const editing = Boolean(capsule);
-  const [form, setForm] = useState(capsule ?? EMPTY_FORM);
+  // Kung edit, ibutang ang datos sa capsule sa form (ang rate himuon string)
+  const [form, setForm] = useState(
+    capsule ? { ...capsule, rate: String(capsule.rate) } : EMPTY_FORM
+  );
   const [errors, setErrors] = useState({});
 
   /* Change a form value */
@@ -107,14 +106,18 @@ function CapsuleModal({ capsule, existingCodes, onSave, onDelete, onClose }) {
   const submit = (e) => {
     e.preventDefault();
     const next = {};
+    const id = form.id.trim();
     const code = form.code.trim().toUpperCase();
-    if (!code) next.code = "Enter a capsule code, for example R-13.";
-    else if (existingCodes.includes(code) && code !== capsule?.code)
-      next.code = "This code is already in use.";
-    if (form.rate === "" || Number(form.rate) <= 0) next.rate = "Enter a rate greater than 0.";
+    // Check sa Capsule ID (para sa bag-o ra)
+    if (!editing) {
+      if (!id) next.id = "Enter a capsule ID, for example C107.";
+      else if (existingIds.includes(id)) next.id = "This ID is already in use.";
+    }
+    if (!code) next.code = "Enter a capsule name, for example R-13.";
+    if (form.rate === "" || Number(form.rate) <= 0) next.rate = "Enter a price greater than 0.";
     setErrors(next);
     if (Object.keys(next).length) return;
-    onSave({ ...form, code, rate: Number(form.rate), floor: Number(form.floor) });
+    onSave({ ...form, id, code, rate: Number(form.rate) });
   };
 
   return (
@@ -149,13 +152,23 @@ function CapsuleModal({ capsule, existingCodes, onSave, onDelete, onClose }) {
         </div>
 
         <div className="grid grid-cols-2 gap-4 px-6 py-5">
-          <Field label="Capsule code" error={errors.code}>
+          {/* Bag-ong field: Capsule ID (dili na ma-usab kung edit) */}
+          <Field label="Capsule ID" error={errors.id}>
+            <input
+              className={`${inputCls} disabled:bg-slate-100 disabled:text-slate-500`}
+              placeholder="C107"
+              value={form.id}
+              disabled={editing}
+              onChange={(e) => set("id")(e.target.value)}
+              autoFocus={!editing}
+            />
+          </Field>
+          <Field label="Capsule name" error={errors.code}>
             <input
               className={inputCls}
               placeholder="R-13"
               value={form.code}
               onChange={(e) => set("code")(e.target.value)}
-              autoFocus
             />
           </Field>
           <Field label="Room type">
@@ -165,28 +178,31 @@ function CapsuleModal({ capsule, existingCodes, onSave, onDelete, onClose }) {
               ))}
             </select>
           </Field>
-          <Field label="Rate per night (₱)" error={errors.rate}>
+          {/* Gi-usab: per hour na, dili na per night */}
+          <Field label="Price per hour (₱)" error={errors.rate}>
             <input
               type="number"
               min="0"
               className={inputCls}
-              placeholder="450"
+              placeholder="36"
               value={form.rate}
               onChange={(e) => set("rate")(e.target.value)}
             />
           </Field>
-          <Field label="Rooms">
-            <input
-              type="number"
-              min="1"
-              className={inputCls}
-              value={form.floor}
-              onChange={(e) => set("floor")(e.target.value)}
-            />
-          </Field>
+          {/* Gi-usab: text na ang Rooms (gi-save isip "room" sa database) */}
+          <div className="col-span-2">
+            <Field label="Room">
+              <input
+                className={inputCls}
+                placeholder="Room 1"
+                value={form.room}
+                onChange={(e) => set("room")(e.target.value)}
+              />
+            </Field>
+          </div>
           <div className="col-span-2">
             <Field label="Status">
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {Object.keys(STATUS).map((s) => (
                   <button
                     type="button"
@@ -205,27 +221,25 @@ function CapsuleModal({ capsule, existingCodes, onSave, onDelete, onClose }) {
               </div>
             </Field>
           </div>
-          <div className="col-span-2">
-            <Field label="Notes (optional)">
-              <textarea
-                rows={2}
-                className={`${inputCls} h-auto resize-none py-2`}
-                placeholder="Amenities, issues, or reminders for staff"
-                value={form.notes}
-                onChange={(e) => set("notes")(e.target.value)}
-              />
-            </Field>
-          </div>
         </div>
 
         <div className="flex items-center justify-between border-t border-[#DCEBE3] px-6 py-4">
+          {/* Archive o Restore ang gamit imbes nga Delete */}
           {editing ? (
             <button
               type="button"
-              onClick={() => onDelete(capsule.id)}
+              onClick={() => onArchive(capsule.id)}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-[#C0392B] hover:bg-[#FDECEA]"
             >
-              <Trash2 className="h-4 w-4" /> Delete
+              {isArchivedTab ? (
+                <>
+                  <RotateCcw className="h-4 w-4" /> Restore
+                </>
+              ) : (
+                <>
+                  <Archive className="h-4 w-4" /> Archive
+                </>
+              )}
             </button>
           ) : (
             <span />
@@ -259,7 +273,12 @@ export default function AdminCapsule() {
   const location = useLocation();
 
   /* Store capsules */
-  const [capsules, setCapsules] = useState(SEED);
+  // Gikan na sa database, wala na ang SEED nga sample data
+  const [capsules, setCapsules] = useState([]);
+  // true samtang nag-load pa
+  const [loading, setLoading] = useState(true);
+  // "capsules" o "archived"
+  const [activeTab, setActiveTab] = useState("capsules");
   /* Store selected status */
   const [statusFilter, setStatusFilter] = useState("All status");
   /* Store selected room type */
@@ -292,6 +311,27 @@ export default function AdminCapsule() {
     navigate("/dashboard");
   }
 
+  // Mokuha sa mga capsule gikan sa database (depende sa tab: active o archived)
+  async function loadCapsules() {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API}/capsules?archived=${activeTab === "archived"}`);
+      if (!res.ok) throw new Error("Request failed");
+      const data = await res.json();
+      setCapsules(data.map(toRow));
+    } catch (err) {
+      console.error(err);
+      alert("Could not load capsules. Is the server running?");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Mo-load sa pag-abli sa page ug kada mo-switch og tab
+  useEffect(() => {
+    loadCapsules();
+  }, [activeTab]);
+
   /* Get capsules that match the filters */
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -310,19 +350,54 @@ export default function AdminCapsule() {
   );
 
   /* Save capsule data */
-  const save = (data) => {
-    setCapsules((list) =>
-      modal === "new"
-        ? [...list, { ...data, id: Math.max(0, ...list.map((c) => c.id)) + 1 }]
-        : list.map((c) => (c.id === modal.id ? { ...c, ...data } : c))
-    );
-    setModal(null);
+  // I-save sa database: POST kung bag-o, PUT kung edit
+  const save = async (data) => {
+    const isEdit = modal !== "new";
+    const url = isEdit ? `${API}/capsules/${data.id}` : `${API}/capsules`;
+
+    const body = {
+      capsuleName: data.code,
+      room: data.room,
+      type: data.type,
+      pricePerHour: data.rate,
+      status: data.status,
+    };
+    if (!isEdit) body.capsuleId = data.id;
+
+    try {
+      const res = await fetch(url, {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.message || "Could not save capsule.");
+        return;
+      }
+
+      setModal(null);
+      loadCapsules();
+    } catch (err) {
+      console.error(err);
+      alert("Could not reach the server.");
+    }
   };
 
   /* Remove a capsule */
-  const remove = (id) => {
-    setCapsules((list) => list.filter((c) => c.id !== id));
-    setModal(null);
+  // Archive (o restore) imbes nga delete, parehas sa Staff Capsule Management
+  const archive = async (id) => {
+    const action = activeTab === "archived" ? "restore" : "archive";
+    try {
+      const res = await fetch(`${API}/capsules/${id}/${action}`, { method: "PATCH" });
+      if (!res.ok) throw new Error("Request failed");
+      setModal(null);
+      loadCapsules();
+    } catch (err) {
+      console.error(err);
+      alert(`Could not ${action} capsule.`);
+    }
   };
 
   return (
@@ -334,12 +409,33 @@ export default function AdminCapsule() {
 
         <main className="flex-1 overflow-y-auto p-6 md:p-8">
           <section className="rounded-2xl bg-white shadow-sm">
+            {/* Bag-ong tabs: Capsules ug Archived */}
+            <div className="flex gap-6 border-b border-[#CFE3D9] px-6 pt-4">
+              {[
+                ["capsules", "Capsules"],
+                ["archived", "Archived"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setActiveTab(key)}
+                  className={`border-b-2 pb-3 text-sm font-semibold ${
+                    activeTab === key
+                      ? "border-[#2F9E7A] text-[#0B3B2A]"
+                      : "border-transparent text-[#6F8E7F]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
             <div className="flex flex-wrap items-center gap-3 px-6 py-5">
               <Select
                 value={statusFilter}
                 onChange={setStatusFilter}
                 options={["All status", ...Object.keys(STATUS)]}
-                className="w-40"
+                className="w-48"
               />
               <Select
                 value={roomFilter}
@@ -365,7 +461,10 @@ export default function AdminCapsule() {
             </ul>
 
             <div className="px-6 pb-6 pt-3">
-              {visible.length === 0 ? (
+              {/* Loading message samtang nag-load pa */}
+              {loading ? (
+                <div className="py-16 text-center text-sm text-[#6F8E7F]">Loading...</div>
+              ) : visible.length === 0 ? (
                 <div className="flex flex-col items-center py-16 text-center">
                   <p className="font-semibold">No capsules match these filters</p>
                   <p className="mt-1 text-sm text-[#6F8E7F]">Clear a filter or add a new capsule.</p>
@@ -373,12 +472,12 @@ export default function AdminCapsule() {
               ) : (
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7">
                   {visible.map((c) => {
-                    const s = STATUS[c.status];
+                    const s = STATUS[c.status] ?? STATUS.Available;
                     return (
                       <button
                         key={c.id}
                         onClick={() => setModal(c)}
-                        title={`${c.type} · Floor ${c.floor} · ₱${c.rate}/night`}
+                        title={`${c.type} · ${c.room} · ₱${c.rate}/hour`}
                         className={`flex aspect-[1/0.95] flex-col items-center justify-center rounded-2xl ${s.tile} ${s.text} shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#0B3B2A] focus-visible:ring-offset-2`}
                       >
                         <span className="text-2xl font-medium tracking-wide">{c.code}</span>
@@ -396,13 +495,13 @@ export default function AdminCapsule() {
       {modal && (
         <CapsuleModal
           capsule={modal === "new" ? null : modal}
-          existingCodes={capsules.map((c) => c.code)}
+          existingIds={capsules.map((c) => c.id)}
+          isArchivedTab={activeTab === "archived"}
           onSave={save}
-          onDelete={remove}
+          onArchive={archive}
           onClose={() => setModal(null)}
         />
       )}
     </div>
   );
 }
-

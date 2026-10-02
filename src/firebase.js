@@ -2,7 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
-  // Paste the Firebase config from your Firebase Console here
+
  apiKey: "AIzaSyAK7NHYsVoFhzBFBqY7T0duC8YCjW69dqM",
   authDomain: "forrest-co-working-space.firebaseapp.com",
   projectId: "forrest-co-working-space",

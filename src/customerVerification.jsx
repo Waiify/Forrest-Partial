@@ -7,11 +7,11 @@ import backgroundImage from './assets/page_background.jpg'
 const CODE_LENGTH = 6
 const RESEND_COOLDOWN = 60 // seconds
 
-// Verifies the code sent to the customer's email before allowing a password reset
+// Mag verify sa code sent to the customer's email before allowing a password reset
 function VerifyCode() {
   const navigate = useNavigate()
   const location = useLocation()
-  const email = location.state?.email || 'your email'
+  const email = location.state?.email || ''
 
   const [code, setCode] = useState(Array(CODE_LENGTH).fill(''))
   const [status, setStatus] = useState({ loading: false, error: '', success: '' })
@@ -82,22 +82,30 @@ function VerifyCode() {
 
     setStatus({ loading: true, error: '', success: '' })
 
-    try {
-     
-      console.log({ email, code: fullCode })
+        try {
+      const res = await fetch('http://localhost:5000/api/auth/verify-reset-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code: fullCode }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Invalid or expired code.')
 
-      setStatus({ loading: false, error: '', success: 'Code verified!' })
-      navigate('/set-new-password', { state: { email, code: fullCode } })
-    } catch {
-      setStatus({ loading: false, error: 'Invalid or expired code. Please try again.', success: '' })
+      navigate('/set-new-password', { state: { email, resetToken: data.resetToken } })
+    } catch (err) {
+      setStatus({ loading: false, error: err.message, success: '' })
     }
   }
 
   const handleResend = async () => {
     if (cooldown > 0) return
-    try {
-        
-      console.log('Resending code to', email)
+        try {
+      const res = await fetch('http://localhost:5000/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      if (!res.ok) throw new Error()
 
       setCode(Array(CODE_LENGTH).fill(''))
       setStatus({ loading: false, error: '', success: 'A new code has been sent.' })
@@ -129,7 +137,7 @@ function VerifyCode() {
 
         <h2 className="text-2xl font-bold text-green-800 mb-1">Enter verification code</h2>
         <p className="text-sm text-gray-500 mt-2 mb-6">
-          We sent a 6-digit code to <span className="font-medium text-gray-700">{email}</span>. Enter it below to continue.
+        We sent a 6-digit code to <span className="font-medium text-gray-700">{email || 'your email'}</span>. Enter it below to continue.
         </p>
 
         <form onSubmit={handleSubmit} className="signup-form flex flex-col gap-4">

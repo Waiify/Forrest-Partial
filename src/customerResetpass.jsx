@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Mail, ArrowLeft } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import './index.css'
 import backgroundImage from './assets/page_background.jpg'
 
-// Sends a password reset link to the customer's email
+
 function ResetPassword() {
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState({ loading: false, error: '', success: '' })
 
@@ -17,17 +18,18 @@ function ResetPassword() {
     e.preventDefault()
     setStatus({ loading: true, error: '', success: '' })
 
-    try {
-    
-      console.log({ email })
-
-      setStatus({
-        loading: false,
-        error: '',
-        success: `A password reset link has been sent to ${email}.`
+        try {
+      const res = await fetch('http://localhost:5000/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
       })
-    } catch {
-      setStatus({ loading: false, error: 'Something went wrong. Please try again.', success: '' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Could not send the code.')
+
+      navigate('/verify-code', { state: { email } })
+    } catch (err) {
+      setStatus({ loading: false, error: err.message, success: '' })
     }
   }
 
@@ -46,12 +48,12 @@ function ResetPassword() {
     >
       <div className="absolute inset-0 bg-black/10 pointer-events-none"></div>
 
-      {/* single centered card */}
+      
       <div className="relative w-full max-w-md bg-white/95 rounded-2xl shadow-xl overflow-hidden border border-green-950 p-8 md:p-10">
 
         <h2 className="text-2xl font-bold text-green-800 mb-1 mt-2">Reset your password</h2>
         <p className="text-sm text-gray-500 mt-2 mb-6">
-          Enter the email linked to your account and we'll send you a link to reset your password.
+         Enter the email linked to your account and we'll send you a verification code to reset your password.
         </p>
 
         {!status.success ? (

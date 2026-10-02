@@ -3,10 +3,12 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
 
+
 import Login from './loginPage.jsx'
 import StaffSignup from './staffSignup.jsx'
 import CustomerSignUp from './CustomerSignUp.jsx'
 import ResetPassword from './customerResetpass.jsx'
+import SetNewPassword from './setNewPassword'
 import VerifyCode from './customerVerification.jsx'
 import Dashboard from './admindashboard.jsx'
 import Customers from './Customers.jsx'
@@ -15,6 +17,8 @@ import AdminCapsule from './admincapsule.jsx'
 import StaffDashboard from './StaffDashboard.jsx'
 import StaffCapsuleManagement from './StaffCapsuleManagement.jsx'
 import StaffCapsuleAvailability from './StaffCapsuleAvailability.jsx'
+
+
 
 
 
@@ -38,6 +42,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/CustomerSignUp" element={<CustomerSignUp />} />
         <Route path="/customerResetpass" element={<ResetPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/set-new-password" element={<SetNewPassword />} />
         <Route path="/customerVerification" element={<VerifyCode />} />
         <Route path="/verify-code" element={<VerifyCode />} />
 
