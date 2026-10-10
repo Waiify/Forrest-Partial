@@ -16,6 +16,14 @@ const STATUS_CONFIG = {
 // Empty nga form
 const EMPTY_FORM = { name: "", email: "", password: "" };
 
+// Valid email: name@domain.extension (e.g. juan@gmail.com)
+const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
+
+// Check kung valid ang email
+function isValidEmail(email) {
+  return EMAIL_REGEX.test(email);
+}
+
 // Para sa date format (Apr 2, 2026)
 function formatDate(dateStr) {
   const date = new Date(dateStr);
@@ -35,9 +43,10 @@ function CreateStaffForm({ onCreate }) {
   const [saving, setSaving] = useState(false);
   const [createdPassword, setCreatedPassword] = useState("");
 
-  // Para sa pag-update sa inputs
+  // Para sa pag-update sa inputs (ug i-clear ang error inig usab)
   function handleChange(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    if (error) setError("");
   }
 
   // Mo-run inig click sa "Create account"
@@ -45,9 +54,16 @@ function CreateStaffForm({ onCreate }) {
     e.preventDefault();
     setCreatedPassword("");
 
+    const email = form.email.trim();
+
     // Check kung naay sulod ang name ug email
-    if (!form.name.trim() || !form.email.trim()) {
+    if (!form.name.trim() || !email) {
       setError("Name and email are required.");
+      return;
+    }
+    // Check kung valid ang email
+    if (!isValidEmail(email)) {
+      setError("Please enter a valid email address (e.g. juan@gmail.com).");
       return;
     }
     // Check sa password length
@@ -64,7 +80,7 @@ function CreateStaffForm({ onCreate }) {
       // I-save sa database
       await onCreate({
         name: form.name.trim(),
-        email: form.email.trim().toLowerCase(),
+        email: email.toLowerCase(),
         password,
       });
       if (generatedPassword) setCreatedPassword(password);
@@ -79,6 +95,7 @@ function CreateStaffForm({ onCreate }) {
   return (
     <form
       onSubmit={handleSubmit}
+      noValidate
       className="rounded-lg border border-slate-200 bg-white p-4"
     >
       <h2 className="text-sm font-semibold">Create staff account</h2>
