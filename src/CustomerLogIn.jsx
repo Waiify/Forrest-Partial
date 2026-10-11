@@ -89,7 +89,7 @@ const handleGoogleLogin = async () => {
 
     sessionStorage.setItem('token', data.token)
     sessionStorage.setItem('user', JSON.stringify(data.user))
-    navigate('/dashboard')
+    navigate('/customerdashboard')
     } catch (error) {
       console.error("Google login error:", error)
       alert("Google login failed. Please try again.")
@@ -137,7 +137,7 @@ const handleGoogleLogin = async () => {
       sessionStorage.setItem('token', data.token)
       sessionStorage.setItem('user', JSON.stringify(data.user))
       setStatus({ loading: false, error: '', success: 'Logged in successfully!' })
-      navigate('/dashboard')
+      navigate('/customerdashboard')
     } catch (err) {
       setStatus({ loading: false, error: err.message, success: '' })
     }
