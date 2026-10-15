@@ -1,5 +1,5 @@
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
-require('dotenv').config();
+require('dotenv').config({ path: __dirname + '/.env' });
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -63,6 +63,74 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+// PUT: update customer profile
+app.put('/api/users/:id', async (req, res) => {
+  
+  try {
+    const { firstName, lastName, username } = req.body;
+
+    // Basic validation
+    if (!firstName || !lastName || !username) {
+      return res.status(400).json({
+        message: 'First name, last name, and username are required',
+      });
+    }
+
+    // Check if another user is already using the username
+    const existingUsername = await User.findOne({
+      username: username.trim(),
+      _id: { $ne: req.params.id },
+    });
+
+    if (existingUsername) {
+      return res.status(409).json({
+        message: 'Username already in use',
+      });
+    }
+
+    // Update customer
+    const user = await User.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        role: 'customer',
+      },
+      {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        username: username.trim(),
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'Customer not found',
+      });
+    }
+
+    res.json({
+      message: 'Profile updated successfully',
+      user,
+    });
+
+  } catch (err) {
+    console.error('Profile update error:', err);
+
+    if (err.code === 11000) {
+      return res.status(409).json({
+        message: 'Username already in use',
+      });
+    }
+
+    res.status(500).json({
+      message: 'Server error',
+    });
+  }
+});
+
 
 // STAFF (para sa Management page)
 
@@ -87,6 +155,8 @@ app.get('/api/staff', async (req, res) => {
 
 // POST: maghimo og bag-ong staff account
 app.post('/api/staff', async (req, res) => {
+  console.log("🔥 LOGIN ROUTE HIT");
+console.log("Login body:", req.body);
   try {
     const { name, email, password } = req.body;
     if (!name || !email || !password || password.length < 8) {

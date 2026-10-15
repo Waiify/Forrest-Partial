@@ -11,6 +11,7 @@ import ResetPassword from './customerResetpass.jsx'
 import SetNewPassword from './setNewPassword'
 import VerifyCode from './customerVerification.jsx'
 import Dashboard from './admindashboard.jsx'
+import CustomerDashboard from './customerdashboard.jsx'
 import Customers from './Customers.jsx'
 import Management from './Management.jsx'
 import AdminCapsule from './admincapsule.jsx'
@@ -49,6 +50,7 @@ createRoot(document.getElementById('root')).render(
         {/* Dashboard and customer pages / Dashboard ug customer pages. */}
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/adminDashboard" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/customerdashboard" element={<CustomerDashboard />} />
         <Route path="/staff-dashboard" element={<StaffDashboard />} />
         <Route path="/StaffDashboard" element={<StaffDashboard />} />
         <Route path="/StaffCapsuleManagement" element={<StaffCapsuleManagement />} />
