@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import pageBackground from "./assets/page_background.jpeg";
 import { ChevronDown, Plus, X, Archive, RotateCcw } from "lucide-react";
@@ -123,7 +123,21 @@ export default function StaffCapsuleManagement() {
     navigate(ROUTES[section] ?? "/dashboard");
   }
 
-  // Runs on first load and every time you switch tabs
+  const loadCapsules = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/capsules?archived=${activeTab === "archived"}`);
+      if (!res.ok) throw new Error("Request failed");
+      const data = await res.json();
+      setCapsules(data.map(toRow));
+    } catch (err) {
+      console.error(err);
+      alert("Could not load capsules. Is the server running?");
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab]);
+
+  // Runs on first load and every time you switch tabs.
   useEffect(() => {
     let current = true;
     fetch(`${API}/capsules?archived=${activeTab === "archived"}`)
@@ -141,7 +155,6 @@ export default function StaffCapsuleManagement() {
       .finally(() => {
         if (current) setLoading(false);
       });
-
     return () => {
       current = false;
     };

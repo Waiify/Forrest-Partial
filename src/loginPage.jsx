@@ -17,7 +17,7 @@ const API_URL = "http://localhost:5000";
 const ROLE_ROUTES = {
   admin: "/dashboard",
   staff: "/staff-dashboard",
-  customer: "/dashboard",
+  customer: "/customerdashboard",
 };
 
 const inputClass =

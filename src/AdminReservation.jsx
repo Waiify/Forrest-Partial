@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarDays, Clock3, Plus, RefreshCw, X } from "lucide-react";
+import { CalendarDays, Plus, RefreshCw, X } from "lucide-react";
 
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
@@ -18,10 +18,32 @@ const STATUS_STYLES = {
 const inputClass =
   "h-10 w-full rounded-lg border border-[#CFE3D9] bg-white px-3 text-sm text-[#0B3B2A] outline-none focus:border-[#2F9E7A] focus:ring-2 focus:ring-[#2F9E7A]/25";
 
+// Handles API responses and reports request errors.
+async function readResponse(response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || "The request failed.");
+  return data;
+}
+
+async function fetchReservationData() {
+  const [reservations, customers, capsules] = await Promise.all([
+    fetch(`${API}/reservations`).then(readResponse),
+    fetch(`${API}/users`).then(readResponse),
+    fetch(`${API}/capsules?archived=false`).then(readResponse),
+  ]);
+  return {
+    reservations,
+    customers,
+    capsules: capsules.filter((capsule) => ["Available", "Reserved"].includes(capsule.status)),
+  };
+}
+
+// functions for consistent date, time, and currency formatting.
 function localDateValue(value) {
   const date = new Date(value);
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 10);
 }
 
 function formatDate(value) {
@@ -44,28 +66,10 @@ function formatCurrency(value) {
     style: "currency",
     currency: "PHP",
     maximumFractionDigits: 2,
-  }).format(value || 0);
+  }).format(Number(value) || 0);
 }
 
-async function readResponse(response) {
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || "The request failed.");
-  return data;
-}
-
-async function fetchReservationData() {
-  const [reservations, customers, capsules] = await Promise.all([
-    fetch(`${API}/reservations`).then(readResponse),
-    fetch(`${API}/users`).then(readResponse),
-    fetch(`${API}/capsules?archived=false`).then(readResponse),
-  ]);
-  return {
-    reservations,
-    customers,
-    capsules: capsules.filter((capsule) => ["Available", "Reserved"].includes(capsule.status)),
-  };
-}
-
+// component for displaying reservation summary statistics.
 function StatCard({ label, value, detail, tint }) {
   return (
     <section className="rounded-2xl border border-[#DCEBE3] bg-white p-5 shadow-sm">
@@ -78,6 +82,7 @@ function StatCard({ label, value, detail, tint }) {
   );
 }
 
+// Form component for creating a reservation, including input validation.
 function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
   const [form, setForm] = useState({
     customerId: "",
@@ -95,11 +100,12 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
   async function submit(event) {
     event.preventDefault();
     setError("");
+
+    const hours = Number(form.durationHours);
     if (!form.customerId || !form.capsuleId || !form.startAt) {
       setError("Choose a customer, capsule, and start time.");
       return;
     }
-    const hours = Number(form.durationHours);
     if (!Number.isFinite(hours) || hours < 0.5 || hours > 24) {
       setError("Duration must be between 0.5 and 24 hours.");
       return;
@@ -135,9 +141,7 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
             <h2 id="reservation-form-title" className="text-lg font-semibold text-[#0B3B2A]">
               New reservation
             </h2>
-            <p className="mt-1 text-sm text-[#5F7F70]">
-              Create a booking for an existing customer.
-            </p>
+            <p className="mt-1 text-sm text-[#5F7F70]">Create a booking for an existing customer.</p>
           </div>
           <button
             type="button"
@@ -165,11 +169,7 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
                 </option>
               ))}
             </select>
-            {customers.length === 0 && (
-              <span className="mt-1 block text-xs text-[#6F8E7F]">No customer accounts are available.</span>
-            )}
           </label>
-
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">Capsule</span>
             <select
@@ -181,15 +181,11 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
               <option value="">Select a capsule</option>
               {capsules.map((capsule) => (
                 <option key={capsule.capsuleId} value={capsule.capsuleId}>
-                  {capsule.capsuleName} · {capsule.type} · {formatCurrency(capsule.pricePerHour)}/hr
+                  {capsule.capsuleName} · {formatCurrency(capsule.pricePerHour)}/hr
                 </option>
               ))}
             </select>
-            {capsules.length === 0 && (
-              <span className="mt-1 block text-xs text-[#6F8E7F]">No bookable capsules are available.</span>
-            )}
           </label>
-
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">Start date and time</span>
             <input
@@ -200,7 +196,6 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
               required
             />
           </label>
-
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">Duration (hours)</span>
             <input
@@ -214,7 +209,6 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
               required
             />
           </label>
-
           <label className="block sm:col-span-2">
             <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">Initial status</span>
             <select
@@ -239,12 +233,12 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm font-medium text-[#5F7F70] hover:bg-[#F3F9F5]"
           >
-            Close
+            Cancel
           </button>
           <button
             type="submit"
             disabled={saving || customers.length === 0 || capsules.length === 0}
-            className="rounded-lg bg-[#0B4A2E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0A5A35] disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg bg-[#2F9E7A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a8f6f] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? "Saving..." : "Create reservation"}
           </button>
@@ -254,6 +248,7 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
   );
 }
 
+// Main admin page for viewing, creating, filtering, and updating reservations.
 export default function AdminReservation() {
   const navigate = useNavigate();
   const [reservations, setReservations] = useState([]);
@@ -269,6 +264,7 @@ export default function AdminReservation() {
   const [capsuleFilter, setCapsuleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
+  // Retrieves the latest reservation, customer, and capsule 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -312,6 +308,7 @@ export default function AdminReservation() {
     return navigate("/dashboard");
   }
 
+  // Applies the selected date, capsule, and status filters to the reservation list.
   const filteredReservations = useMemo(
     () => reservations.filter((reservation) => {
       if (dateFilter && localDateValue(reservation.startAt) !== dateFilter) return false;
@@ -322,14 +319,13 @@ export default function AdminReservation() {
     [reservations, dateFilter, capsuleFilter, statusFilter]
   );
 
-  const pendingCount = reservations.filter((reservation) => reservation.status === "Pending").length;
-  const activeCount = reservations.filter((reservation) =>
-    ACTIVE_STATUSES.has(reservation.status)
-  ).length;
-  const revenue = reservations
-    .filter((reservation) => reservation.status !== "Cancelled")
-    .reduce((sum, reservation) => sum + Number(reservation.totalPrice || 0), 0);
+  const pendingCount = reservations.filter((item) => item.status === "Pending").length;
+  const activeCount = reservations.filter((item) => ACTIVE_STATUSES.has(item.status)).length;
+  const bookedValue = reservations
+    .filter((item) => item.status !== "Cancelled")
+    .reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
 
+  // Saves a new reservation and refreshes the displayed data.
   async function createReservation(data) {
     setSaving(true);
     try {
@@ -345,6 +341,7 @@ export default function AdminReservation() {
     }
   }
 
+  // Updates a reservation status 
   async function updateStatus(reservation, status) {
     setActionError("");
     setUpdatingId(reservation._id);
@@ -366,8 +363,8 @@ export default function AdminReservation() {
 
   return (
     <div className="flex h-screen w-full bg-[#F4F8F5] text-[#0B3B2A]">
+      {/* Admin navigation sidebar. */}
       <Sidebar active="Reservation" onNavigate={handleNavigate} />
-
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header active="Reservation" />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
@@ -382,7 +379,7 @@ export default function AdminReservation() {
               <button
                 type="button"
                 onClick={() => setShowForm(true)}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#0B4A2E] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0A5A35]"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#2F9E7A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2a8f6f] focus-visible:ring-2 focus-visible:ring-[#0B3B2A] focus-visible:ring-offset-2"
               >
                 <Plus className="h-4 w-4" />
                 New reservation
@@ -393,7 +390,7 @@ export default function AdminReservation() {
               <StatCard label="All reservations" value={reservations.length} detail="Saved bookings" tint="bg-[#EAF4EE] text-[#0B4A2E]" />
               <StatCard label="Needs confirmation" value={pendingCount} detail="Pending" tint="bg-amber-50 text-amber-700" />
               <StatCard label="Active bookings" value={activeCount} detail="Pending, confirmed, or checked in" tint="bg-blue-50 text-blue-700" />
-              <StatCard label="Booked value" value={formatCurrency(revenue)} detail="Excludes cancelled bookings" tint="bg-emerald-50 text-emerald-700" />
+              <StatCard label="Booked value" value={formatCurrency(bookedValue)} detail="Excludes cancelled bookings" tint="bg-emerald-50 text-emerald-700" />
             </div>
 
             <section className="overflow-hidden rounded-2xl border border-[#DCEBE3] bg-white shadow-sm">
@@ -418,16 +415,13 @@ export default function AdminReservation() {
               <div className="flex flex-wrap items-end gap-3 border-b border-[#DCEBE3] bg-[#FAFCFA] px-5 py-4 sm:px-6">
                 <label className="block min-w-40 flex-1 sm:max-w-56">
                   <span className="mb-1.5 block text-xs font-semibold text-[#5F7F70]">Date</span>
-                  <span className="relative block">
-                    <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6F8E7F]" />
-                    <input
-                      className={`${inputClass} pl-9`}
-                      type="date"
-                      value={dateFilter}
-                      onChange={(event) => setDateFilter(event.target.value)}
-                      aria-label="Filter by date"
-                    />
-                  </span>
+                  <input
+                    className={inputClass}
+                    type="date"
+                    value={dateFilter}
+                    onChange={(event) => setDateFilter(event.target.value)}
+                    aria-label="Filter by date"
+                  />
                 </label>
                 <label className="block min-w-40 flex-1 sm:max-w-56">
                   <span className="mb-1.5 block text-xs font-semibold text-[#5F7F70]">Capsule</span>
@@ -438,9 +432,7 @@ export default function AdminReservation() {
                   >
                     <option value="all">All capsules</option>
                     {capsules.map((capsule) => (
-                      <option key={capsule.capsuleId} value={capsule.capsuleId}>
-                        {capsule.capsuleName}
-                      </option>
+                      <option key={capsule.capsuleId} value={capsule.capsuleId}>{capsule.capsuleName}</option>
                     ))}
                   </select>
                 </label>
@@ -494,21 +486,13 @@ export default function AdminReservation() {
                   </thead>
                   <tbody>
                     {loading ? (
-                      <tr>
-                        <td colSpan={6} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
-                          Loading reservations...
-                        </td>
-                      </tr>
+                      <tr><td colSpan={6} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">Loading reservations...</td></tr>
                     ) : error ? (
-                      <tr>
-                        <td colSpan={6} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
-                          Reservation data could not be loaded.
-                        </td>
-                      </tr>
+                      <tr><td colSpan={6} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">Reservation data could not be loaded.</td></tr>
                     ) : filteredReservations.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-5 py-14 text-center">
-                          <Clock3 className="mx-auto h-8 w-8 text-[#9BB6A8]" />
+                          <CalendarDays className="mx-auto h-8 w-8 text-[#9BB6A8]" />
                           <p className="mt-3 font-semibold text-[#0B3B2A]">No reservations found</p>
                           <p className="mt-1 text-sm text-[#6F8E7F]">
                             {reservations.length === 0
@@ -525,16 +509,16 @@ export default function AdminReservation() {
                             <p className="mt-0.5 whitespace-nowrap text-xs text-[#6F8E7F]">{reservation.guestEmail}</p>
                           </td>
                           <td className="px-5 py-4 text-sm font-medium text-[#315D49]">{reservation.capsuleId}</td>
-                          <td className="px-5 py-4 whitespace-nowrap">
+                          <td className="whitespace-nowrap px-5 py-4">
                             <p className="text-sm font-medium text-[#315D49]">{formatDate(reservation.startAt)}</p>
                             <p className="mt-0.5 text-xs text-[#6F8E7F]">
                               {formatTime(reservation.startAt)} – {formatTime(reservation.endAt)}
                             </p>
                           </td>
-                          <td className="px-5 py-4 whitespace-nowrap text-sm text-[#315D49]">
+                          <td className="whitespace-nowrap px-5 py-4 text-sm text-[#315D49]">
                             {reservation.durationHours} {reservation.durationHours === 1 ? "hour" : "hours"}
                           </td>
-                          <td className="px-5 py-4 whitespace-nowrap text-sm font-medium text-[#315D49]">
+                          <td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-[#315D49]">
                             {formatCurrency(reservation.totalPrice)}
                           </td>
                           <td className="px-5 py-4">
@@ -559,6 +543,7 @@ export default function AdminReservation() {
         </main>
       </div>
 
+      {/* Displays the reservation form when requested by the administrator. */}
       {showForm && (
         <ReservationModal
           customers={customers}
