@@ -139,7 +139,9 @@ export default function AdminHeader({
       ? "Status of every capsule available"
       : active === "Customers"
         ? "Manage customer records and activity"
-        : "Overview of your workspace";
+        : active === "Reservation"
+          ? "Manage capsule bookings and reservation status"
+          : "Overview of your workspace";
 
   const displayName = getFullName(user) || "Admin User";
 

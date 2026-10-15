@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
@@ -308,13 +308,16 @@ export default function AdminCapsule() {
       navigate("/management");
       return;
     }
+    if (section === "Reservation") {
+      navigate("/reservation");
+      return;
+    }
     navigate("/dashboard");
   }
 
   // Mokuha sa mga capsule gikan sa database (depende sa tab: active o archived)
-  async function loadCapsules() {
+  const loadCapsules = useCallback(async () => {
     try {
-      setLoading(true);
       const res = await fetch(`${API}/capsules?archived=${activeTab === "archived"}`);
       if (!res.ok) throw new Error("Request failed");
       const data = await res.json();
@@ -325,11 +328,29 @@ export default function AdminCapsule() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [activeTab]);
 
   // Mo-load sa pag-abli sa page ug kada mo-switch og tab
   useEffect(() => {
-    loadCapsules();
+    let current = true;
+    fetch(`${API}/capsules?archived=${activeTab === "archived"}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Request failed");
+        return res.json();
+      })
+      .then((data) => {
+        if (current) setCapsules(data.map(toRow));
+      })
+      .catch((err) => {
+        console.error(err);
+        if (current) alert("Could not load capsules. Is the server running?");
+      })
+      .finally(() => {
+        if (current) setLoading(false);
+      });
+    return () => {
+      current = false;
+    };
   }, [activeTab]);
 
   /* Get capsules that match the filters */

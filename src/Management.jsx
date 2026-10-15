@@ -315,6 +315,10 @@ export default function StaffAccounts() {
       navigate("/management");
       return;
     }
+    if (section === "Reservation") {
+      navigate("/reservation");
+      return;
+    }
     navigate("/dashboard");
   }
 

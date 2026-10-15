@@ -1,4 +1,4 @@
-import { Bell, Search, ChevronDown, User, LogOut } from "lucide-react";
+import { Bell, Search, User, LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export default function Header({

@@ -108,6 +108,10 @@ export default function Customers() {
       navigate("/admincapsule");
       return;
     }
+    if (section === "Reservation") {
+      navigate("/reservation");
+      return;
+    }
     navigate("/dashboard");
   }
 

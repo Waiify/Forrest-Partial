@@ -84,7 +84,7 @@ export default function CustomerDashboard() {
       ========================== */}
       <Sidebar
         active={active}
-        onNavigate={setActive}
+        onNavigate={handleNavigate}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">

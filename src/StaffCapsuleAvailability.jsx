@@ -158,33 +158,36 @@ export default function StaffCapsuleAvailability() {
     navigate(ROUTES[section] ?? "/StaffCapsuleAvailability");
   }
 
-  // Load only non-archived capsules, same endpoint Management uses
-  async function loadCapsules(showLoading = false) {
-    try {
-      if (showLoading) setLoading(true);
-      const res = await fetch(`${API}/capsules?archived=false`);
-      if (!res.ok) throw new Error("Request failed");
-      const data = await res.json();
-      setCapsules(
-        data.map((c) => ({
-          id: c.capsuleId,
-          name: c.capsuleName,
-          status: c.status,
-        }))
-      );
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   // Initial load + refresh every 5 seconds so changes made in
   // Capsule Management (or by reservations) appear automatically
   useEffect(() => {
-    loadCapsules(true);
-    const timer = setInterval(() => loadCapsules(false), 5000);
-    return () => clearInterval(timer);
+    let current = true;
+    const loadCapsules = () => {
+      fetch(`${API}/capsules?archived=false`)
+        .then((res) => {
+          if (!res.ok) throw new Error("Request failed");
+          return res.json();
+        })
+        .then((data) => {
+          if (!current) return;
+          setCapsules(data.map((c) => ({
+            id: c.capsuleId,
+            name: c.capsuleName,
+            status: c.status,
+          })));
+        })
+        .catch((err) => console.error(err))
+        .finally(() => {
+          if (current) setLoading(false);
+        });
+    };
+
+    loadCapsules();
+    const timer = setInterval(loadCapsules, 5000);
+    return () => {
+      current = false;
+      clearInterval(timer);
+    };
   }, []);
 
   return (
