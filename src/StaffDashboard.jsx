@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import pageBackground from "./assets/page_background.jpeg";
 
 import StaffHeader from "./components/StaffHeader.jsx";
 import StaffSidebar from "./components/StaffSidebar.jsx";
 
+// Address sa backend server
+const API = "http://localhost:5000/api";
 
 const ROUTES = {
   Dashboard: "/StaffDashboard",
@@ -14,7 +16,6 @@ const ROUTES = {
   ReservationHistory: "/ReservationHistory",
   SystemLogs: "/SystemLogs",
 };
-
 
 {/*for header title ni siya*/}
 
@@ -27,19 +28,7 @@ const PAGE_TITLES = {
   SystemLogs: "System Logs",
 };
 
- {/*need pa ni siyag real na data, change into real one*/}
-const INITIAL_ROOMS = [
-  { id: "R-01", status: "available" },
-  { id: "R-02", status: "reserve" },
-  { id: "R-03", status: "occupied" },
-  { id: "R-04", status: "occupied" },
-  { id: "R-05", status: "reserve" },
-  { id: "R-06", status: "available" },
-  { id: "R-07", status: "available" },
-  { id: "R-08", status: "Under Maintenance" },
-];
-
-  {/*dummy datas pa niiiii rawrrr, change this into real data from database*/}
+{/*dummy datas pa niiiii rawrrr, change this into real data from database*/}
 const INITIAL_RESERVATIONS = [
   { id: 1, guest: "Meme Dealdo", email: "meme@gmail.com", capsule: "R-01", dateTime: "02/08/26, 1:00am" },
   { id: 2, guest: "Dodong Ruiz", email: "dodong@gmail.com", capsule: "R-01", dateTime: "02/08/26, 1:00am" },
@@ -49,15 +38,44 @@ const INITIAL_RESERVATIONS = [
   { id: 6, guest: "Tao Lang Pasensyana", email: "tao@gmail.com", capsule: "R-06", dateTime: "02/08/26, 1:00am" },
 ];
 
-{/*dummy datas pa niiiii rawrrr, change this into real data from database*/}
-const STATUS_CONFIG = {
-  available: { label: "Available", dot: "bg-emerald-500", tile: "bg-[#86d1b9] text-[#1d5f4a]" },
-  occupied: { label: "Occupied", dot: "bg-purple-500", tile: "bg-[#ac72e6] text-[#3f1a75]" },
-  reserve: { label: "Reserve", dot: "bg-amber-500", tile: "bg-[#f2b45c] text-[#7a4a0b]" },
-  maintenance: { label: "Under Maintenance", dot: "bg-red-500", tile: "bg-[#e0666a] text-[#6b1518]" },
-};
+// Ang order sa status sa legend. Parehas gyud sa gi-save sa database
+// (parehas sa StaffCapsuleManagement ug StaffCapsuleAvailability)
+const STATUS_ORDER = [
+  "Available",
+  "Reserved",
+  "Occupied",
+  "Coming Soon",
+  "Under Maintenance",
+];
 
-const STATUS_ORDER = ["available", "occupied", "reserve", "maintenance"];
+// Kolor ug label sa matag status (dot para sa legend, tile para sa kahon)
+const STATUS_CONFIG = {
+  "Available": {
+    label: "Available",
+    dot: "bg-[#3aae8c]",
+    tile: "bg-[#82cdb9] text-[#39745f]",
+  },
+  "Reserved": {
+    label: "Reserved",
+    dot: "bg-[#f2b64f]",
+    tile: "bg-[#f4b957] text-[#8b682d]",
+  },
+  "Occupied": {
+    label: "Occupied",
+    dot: "bg-[#a66be3]",
+    tile: "bg-[#a96be3] text-[#5f3c85]",
+  },
+  "Coming Soon": {
+    label: "Coming Soon",
+    dot: "bg-[#ead86d]",
+    tile: "bg-[#ead86d] text-[#7a6d1f]",
+  },
+  "Under Maintenance": {
+    label: "Under Maintenance",
+    dot: "bg-[#df6267]",
+    tile: "bg-[#df6267] text-[#8d363b]",
+  },
+};
 
 function StatCard({ label, value }) {
   return (
@@ -137,30 +155,14 @@ function ReservationsNeedingAction({ reservations, onAction }) {
   );
 }
 
-function CapsuleStatus({ rooms, onChangeStatus }) {
+// Display ra ni: dili na ma-usab ang status diri, sa Capsule Management ra
+function CapsuleStatus({ rooms, loading }) {
+  // Filter: "all" o usa ka status (pananglitan "Available")
   const [filter, setFilter] = useState("all");
-  const [openId, setOpenId] = useState(null);
-  const containerRef = useRef(null);
 
-  useEffect(() => {
-    function handleClick(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setOpenId(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  const counts = useMemo(() => {
-    const base = { available: 0, occupied: 0, reserve: 0, maintenance: 0 };
-    for (const room of rooms) {
-      if (base[room.status] !== undefined) base[room.status] += 1;
-    }
-    return base;
-  }, [rooms]);
-
-  const visibleRooms = filter === "all" ? rooms : rooms.filter((r) => r.status === filter);
+  // Ang mga capsule nga makita base sa napili nga filter
+  const visibleRooms =
+    filter === "all" ? rooms : rooms.filter((r) => r.status === filter);
 
   return (
     <div className="min-w-0 rounded-2xl bg-white p-5 shadow-md mt-5">
@@ -172,67 +174,46 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
         {STATUS_ORDER.map((status) => {
           const cfg = STATUS_CONFIG[status];
           const isActive = filter === status;
+          // Ihap kung pila ka capsule ang naa niini nga status
+          const count = rooms.filter((r) => r.status === status).length;
           return (
             <button
               key={status}
               type="button"
               onClick={() => setFilter(isActive ? "all" : status)}
-              title={`${counts[status]} ${cfg.label.toLowerCase()}`}
               className={`flex items-center gap-1.5 text-[11px] ${
-                isActive ? "font-bold text-slate-900" : "font-medium text-slate-600 hover:text-slate-900"
+                isActive
+                  ? "font-bold text-slate-900"
+                  : "font-medium text-slate-600 hover:text-slate-900"
               }`}
             >
               <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
-              {cfg.label}
+              {cfg.label} ({count})
             </button>
           );
         })}
       </div>
 
-      <div className="mt-4" ref={containerRef}>
-        {rooms.length === 0 ? (
+      <div className="mt-4">
+        {/* Loading, walay capsule pa, o walay sakto sa filter */}
+        {loading && rooms.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-slate-400">Loading...</div>
+        ) : rooms.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-slate-400">No capsules yet</div>
+        ) : visibleRooms.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-slate-400">No capsules found.</div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            {/* Usa ka kahon matag capsule, ang kolor depende sa status (dili na button) */}
             {visibleRooms.map((room) => {
-              const cfg = STATUS_CONFIG[room.status] ?? STATUS_CONFIG.available;
-              const isOpen = openId === room.id;
+              const cfg = STATUS_CONFIG[room.status] ?? STATUS_CONFIG["Available"];
               return (
-                <div key={room.id} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setOpenId(isOpen ? null : room.id)}
-                    className={`flex aspect-square w-full flex-col items-center justify-center rounded-2xl shadow-sm transition hover:brightness-95 ${cfg.tile}`}
-                  >
-                    <span className="text-lg font-bold leading-tight">{room.id}</span>
-                    <span className="text-[10px] font-medium">{cfg.label}</span>
-                  </button>
-
-                  {isOpen && (
-                    <div className="absolute left-0 top-full z-20 mt-1 w-40 rounded-md border border-slate-200 bg-white p-1 shadow-lg">
-                      {STATUS_ORDER.map((status) => {
-                        const opt = STATUS_CONFIG[status];
-                        const selected = room.status === status;
-                        return (
-                          <button
-                            key={status}
-                            type="button"
-                            onClick={() => {
-                              onChangeStatus(room.id, status);
-                              setOpenId(null);
-                            }}
-                            className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs font-medium hover:bg-slate-50 ${
-                              selected ? "bg-slate-50" : ""
-                            }`}
-                          >
-                            <span className={`h-2 w-2 rounded-full ${opt.dot}`} />
-                            <span className="flex-1 text-slate-700">{opt.label}</span>
-                            {selected && <span className="text-slate-400">✓</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div
+                  key={room.id}
+                  className={`flex aspect-square w-full flex-col items-center justify-center rounded-2xl shadow-sm ${cfg.tile}`}
+                >
+                  <span className="text-lg font-bold leading-tight">{room.name}</span>
+                  <span className="text-[10px] font-medium">{cfg.label}</span>
                 </div>
               );
             })}
@@ -246,7 +227,8 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
 export default function StaffDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [rooms, setRooms] = useState(INITIAL_ROOMS);
+  const [rooms, setRooms] = useState([]); // capsules gikan sa database
+  const [loading, setLoading] = useState(true); // true samtang nag-load pa
   const [reservations, setReservations] = useState(INITIAL_RESERVATIONS);
 
   const active =
@@ -257,20 +239,44 @@ export default function StaffDashboard() {
     navigate(ROUTES[section] ?? "/dashboard");
   }
 
-  function handleChangeStatus(roomId, status) {
-    setRooms((prev) => prev.map((r) => (r.id === roomId ? { ...r, status } : r)));
+  // Mokuha sa mga capsule gikan sa database (wala ang archived)
+  async function loadCapsules(showLoading = false) {
+    try {
+      if (showLoading) setLoading(true);
+      const res = await fetch(`${API}/capsules?archived=false`);
+      if (!res.ok) throw new Error("Request failed");
+      const data = await res.json();
+      // I-convert ang database fields ngadto sa gamiton sa page
+      setRooms(
+        data.map((c) => ({
+          id: c.capsuleId,
+          name: c.capsuleName,
+          status: c.status,
+        }))
+      );
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }
+
+  // Mo-load pag-abli sa page, unya mo-refresh matag 5 segundos
+  useEffect(() => {
+    loadCapsules(true);
+    const timer = setInterval(() => loadCapsules(false), 5000);
+    return () => clearInterval(timer); // i-undang ang timer kung mawala ang page
+  }, []);
 
   function handleReservationAction(id, action) {
     if (action === "approve" || action === "decline") {
       setReservations((prev) => prev.filter((r) => r.id !== id));
-    } else {
     }
   }
 
-  const occupiedCount = rooms.filter((r) => r.status === "occupied").length;
+  // Ihap sa mga capsule nga "Occupied" gikan sa real data
+  const occupiedCount = rooms.filter((r) => r.status === "Occupied").length;
 
- 
   const stats = [
     { label: "Today's Reservation", value: "10" },
     { label: "Pending Approvals", value: String(reservations.length) },
@@ -282,22 +288,21 @@ export default function StaffDashboard() {
     <div className="flex h-screen w-full text-slate-900">
       <StaffSidebar active={active} onNavigate={handleNavigate} />
 
-<div
-  className="flex min-w-0 flex-1 flex-col overflow-hidden"
-
-  style={{
-  backgroundImage: `
-    linear-gradient(
-      rgba(190, 210, 207, 0.68),
-      rgba(190, 210, 207, 0.68)
-    ),
-    url(${pageBackground})
-  `,
-  backgroundSize: "cover",
-  backgroundPosition: "center",
-  backgroundRepeat: "no-repeat",
-}}
->
+      <div
+        className="flex min-w-0 flex-1 flex-col overflow-hidden"
+        style={{
+          backgroundImage: `
+            linear-gradient(
+              rgba(190, 210, 207, 0.68),
+              rgba(190, 210, 207, 0.68)
+            ),
+            url(${pageBackground})
+          `,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+        }}
+      >
         <StaffHeader active={PAGE_TITLES[active]} />
         <main className="flex-1 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -307,8 +312,11 @@ export default function StaffDashboard() {
           </div>
 
           <div className="mt-6 grid grid-cols-1 items-start gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <ReservationsNeedingAction reservations={reservations} onAction={handleReservationAction} />
-            <CapsuleStatus rooms={rooms} onChangeStatus={handleChangeStatus} />
+            <ReservationsNeedingAction
+              reservations={reservations}
+              onAction={handleReservationAction}
+            />
+            <CapsuleStatus rooms={rooms} loading={loading} />
           </div>
         </main>
       </div>

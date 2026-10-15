@@ -1,36 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { CalendarCheck, BedSingle, DoorOpen, Banknote, Check } from "lucide-react";
+import { CalendarCheck, BedSingle, DoorOpen, Banknote } from "lucide-react";
 
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
 
-/* Replace with real data (props, a hook, or an API call).
-   status must be one of: "available" | "occupied" | "cleaning" | "maintenance" */
-const INITIAL_ROOMS = [
-  { id: "A1", status: "available" },
-  { id: "A2", status: "occupied" },
-  { id: "A3", status: "occupied" },
-  { id: "A4", status: "cleaning" },
-  { id: "A5", status: "available" },
-  { id: "A6", status: "maintenance" },
-  { id: "B1", status: "occupied" },
-  { id: "B2", status: "available" },
-  { id: "B3", status: "occupied" },
-  { id: "B4", status: "available" },
-  { id: "B5", status: "cleaning" },
-  { id: "B6", status: "available" },
-];
+// Address sa backend server
+const API = "http://localhost:5000/api";
 
 /* Same palette as the Capsule page */
+// Gi-usab: ang mga key parehas na sa gi-save sa database (AdminCapsule)
 const STATUS_CONFIG = {
-  available: { label: "Available", dot: "bg-[#2F9E7A]", tile: "bg-[#86D0BB]", text: "text-[#0B3B2A]" },
-  occupied: { label: "Occupied", dot: "bg-[#A66BE6]", tile: "bg-[#B27DEB]", text: "text-[#2C1250]" },
-  cleaning: { label: "Cleaning", dot: "bg-[#EDB04F]", tile: "bg-[#F0B65A]", text: "text-[#4A3208]" },
-  maintenance: { label: "Maintenance", dot: "bg-[#DC5F5F]", tile: "bg-[#E06666]", text: "text-[#4A1010]" },
+  Available: { label: "Available", dot: "bg-[#2F9E7A]", tile: "bg-[#86D0BB]", text: "text-[#0B3B2A]" },
+  Reserved: { label: "Reserved", dot: "bg-[#EDB04F]", tile: "bg-[#F0B65A]", text: "text-[#4A3208]" },
+  Occupied: { label: "Occupied", dot: "bg-[#A66BE6]", tile: "bg-[#B27DEB]", text: "text-[#2C1250]" },
+  "Coming Soon": { label: "Coming Soon", dot: "bg-[#E5D04F]", tile: "bg-[#EAD86D]", text: "text-[#4A430F]" },
+  "Under Maintenance": { label: "Under Maintenance", dot: "bg-[#DC5F5F]", tile: "bg-[#E06666]", text: "text-[#4A1010]" },
 };
 
-const STATUS_ORDER = ["available", "occupied", "cleaning", "maintenance"];
+const STATUS_ORDER = ["Available", "Reserved", "Occupied", "Coming Soon", "Under Maintenance"];
 
 /* Summary card */
 function StatCard({ label, value, icon: Icon, tint }) {
@@ -49,22 +37,14 @@ function StatCard({ label, value, icon: Icon, tint }) {
   );
 }
 
-/* Capsule tiles with status filter and status menu */
-function CapsuleStatus({ rooms, onChangeStatus }) {
+/* Capsule tiles with status filter */
+// Display ra ni: dili na ma-usab ang status diri, sa Capsule page ra
+function CapsuleStatus({ rooms, loading }) {
   const [filter, setFilter] = useState("all");
-  const [openId, setOpenId] = useState(null);
-  const containerRef = useRef(null);
 
-  useEffect(() => {
-    function handleClick(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpenId(null);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
+  // Ihap sa matag status
   const counts = useMemo(() => {
-    const base = { available: 0, occupied: 0, cleaning: 0, maintenance: 0 };
+    const base = Object.fromEntries(STATUS_ORDER.map((s) => [s, 0]));
     for (const room of rooms) if (base[room.status] !== undefined) base[room.status] += 1;
     return base;
   }, [rooms]);
@@ -80,7 +60,8 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
     <section className="mt-6 rounded-2xl bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-5">
         <h2 className="text-lg font-semibold text-[#0B3B2A]">Capsule status</h2>
-        <span className="text-xs text-[#6F8E7F]">Click a capsule to update its status</span>
+        {/* Gi-usab: dili na ma-click ang tiles */}
+        <span className="text-xs text-[#6F8E7F]">Update statuses from the Capsule page</span>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-[#CFE3D9] px-6 py-3">
@@ -103,8 +84,11 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
         })}
       </div>
 
-      <div className="px-6 pb-6 pt-3" ref={containerRef}>
-        {rooms.length === 0 ? (
+      <div className="px-6 pb-6 pt-3">
+        {/* Loading message samtang nag-load pa */}
+        {loading && rooms.length === 0 ? (
+          <div className="py-16 text-center text-sm text-[#6F8E7F]">Loading...</div>
+        ) : rooms.length === 0 ? (
           <div className="py-16 text-center">
             <p className="font-semibold text-[#0B3B2A]">No capsules yet</p>
             <p className="mt-1 text-sm text-[#6F8E7F]">Add capsules from the Capsule page.</p>
@@ -116,51 +100,16 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
+            {/* Gi-usab: div na lang imbes nga button, ang ngalan sa capsule ang gipakita */}
             {visibleRooms.map((room) => {
-              const cfg = STATUS_CONFIG[room.status] ?? STATUS_CONFIG.available;
-              const isOpen = openId === room.id;
+              const cfg = STATUS_CONFIG[room.status] ?? STATUS_CONFIG.Available;
               return (
-                <div key={room.id} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setOpenId(isOpen ? null : room.id)}
-                    aria-haspopup="menu"
-                    aria-expanded={isOpen}
-                    className={`flex aspect-[1/0.8] w-full flex-col items-center justify-center rounded-2xl ${cfg.tile} ${cfg.text} shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#0B3B2A] focus-visible:ring-offset-2`}
-                  >
-                    <span className="text-2xl font-medium tracking-wide">{room.id}</span>
-                    <span className="text-xs">{cfg.label}</span>
-                  </button>
-
-                  {isOpen && (
-                    <div
-                      role="menu"
-                      className="absolute left-1/2 top-full z-20 mt-2 w-44 -translate-x-1/2 rounded-xl border border-[#DCEBE3] bg-white p-1.5 shadow-lg"
-                    >
-                      {STATUS_ORDER.map((status) => {
-                        const opt = STATUS_CONFIG[status];
-                        const selected = room.status === status;
-                        return (
-                          <button
-                            key={status}
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              onChangeStatus(room.id, status);
-                              setOpenId(null);
-                            }}
-                            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-[#0B3B2A] ${
-                              selected ? "bg-[#EAF4EE]" : "hover:bg-[#F3F9F5]"
-                            }`}
-                          >
-                            <span className={`h-2.5 w-2.5 rounded-full ${opt.dot}`} />
-                            <span className="flex-1">{opt.label}</span>
-                            {selected && <Check className="h-4 w-4 text-[#2F9E7A]" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div
+                  key={room.id}
+                  className={`flex aspect-[1/0.8] w-full flex-col items-center justify-center rounded-2xl ${cfg.tile} ${cfg.text} shadow-sm`}
+                >
+                  <span className="text-2xl font-medium tracking-wide">{room.name}</span>
+                  <span className="text-xs">{cfg.label}</span>
                 </div>
               );
             })}
@@ -174,7 +123,10 @@ function CapsuleStatus({ rooms, onChangeStatus }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [rooms, setRooms] = useState(INITIAL_ROOMS);
+  // Gi-usab: gikan na sa database, wala na ang INITIAL_ROOMS nga sample data
+  const [rooms, setRooms] = useState([]);
+  // true samtang nag-load pa
+  const [loading, setLoading] = useState(true);
 
   const active =
     location.pathname === "/customers"
@@ -186,16 +138,42 @@ export default function Dashboard() {
   function handleNavigate(section) {
     if (section === "Customers") return navigate("/customers");
     if (section === "Capsule") return navigate("/capsule");
+    if (section === "Staff Management" || section === "Management") return navigate("/management");
     navigate("/dashboard");
   }
 
-  function handleChangeStatus(roomId, status) {
-    setRooms((prev) => prev.map((r) => (r.id === roomId ? { ...r, status } : r)));
-    // TODO: persist the change, e.g. fetch(`/api/rooms/${roomId}`, { method: "PATCH", body: JSON.stringify({ status }) })
+  // Mokuha sa mga capsule gikan sa database (wala ang archived)
+  async function loadCapsules(showLoading = false) {
+    try {
+      if (showLoading) setLoading(true);
+      const res = await fetch(`${API}/capsules?archived=false`);
+      if (!res.ok) throw new Error("Request failed");
+      const data = await res.json();
+      // I-convert ang database fields ngadto sa gamiton sa page
+      setRooms(
+        data.map((c) => ({
+          id: c.capsuleId,
+          name: c.capsuleName,
+          status: c.status,
+        }))
+      );
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  const availableCount = rooms.filter((r) => r.status === "available").length;
-  const occupiedCount = rooms.filter((r) => r.status === "occupied").length;
+  // Mo-load pag-abli sa page, unya mo-refresh matag 5 segundos
+  useEffect(() => {
+    loadCapsules(true);
+    const timer = setInterval(() => loadCapsules(false), 5000);
+    return () => clearInterval(timer); // i-undang ang timer kung mawala ang page
+  }, []);
+
+  // Ihap gikan sa real data
+  const availableCount = rooms.filter((r) => r.status === "Available").length;
+  const occupiedCount = rooms.filter((r) => r.status === "Occupied").length;
 
   /* null = no data yet (shows a dash) */
   const stats = [
@@ -251,7 +229,7 @@ export default function Dashboard() {
             </div>
           </section>
 
-          <CapsuleStatus rooms={rooms} onChangeStatus={handleChangeStatus} />
+          <CapsuleStatus rooms={rooms} loading={loading} />
         </main>
       </div>
     </div>

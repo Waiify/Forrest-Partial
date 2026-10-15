@@ -100,12 +100,9 @@ export default function BookCapsule({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-[#0B4A2E]">
-            Book a Capsule
+            Book Now
           </h2>
 
-          <p className="mt-1 text-sm text-[#6F8E7F]">
-            Choose your preferred date, time, and capsule.
-          </p>
         </div>
 
         <button
@@ -315,7 +312,7 @@ export default function BookCapsule({
                     >
 
                   
-                      <div className="relative h-28 overflow-hidden bg-[#DDEDE5]">
+                      <div className="relative h-45 overflow-hidden bg-[#DDEDE5]">
 
                         {capsule.image ? (
                           <img

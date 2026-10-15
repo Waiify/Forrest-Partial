@@ -88,19 +88,27 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const active =
-    location.pathname === "/customers"
-      ? "Customers"
-      : location.pathname === "/capsule" || location.pathname === "/capsules"
-        ? "Capsule"
-        : "Dashboard";
+  const isManagementPage =
+    location.pathname === "/management" ||
+    location.pathname === "/staff-management" ||
+    location.pathname === "/file-management";
+
+  const active = location.pathname === "/customers" ? "Customers" : isManagementPage ? "Staff Management" : "Dashboard";
 
   function handleNavigate(section) {
-    if (section === "Capsule") {
-      navigate("/capsule");
+    if (section === "Customers") {
+      navigate("/customers");
       return;
     }
-    navigate(section === "Customers" ? "/customers" : "/dashboard");
+    if (section === "Staff Management" || section === "Management") {
+      navigate("/staff-management");
+      return;
+    }
+    if (section === "Capsule") {
+      navigate("/admincapsule");
+      return;
+    }
+    navigate("/dashboard");
   }
 
   useEffect(() => {

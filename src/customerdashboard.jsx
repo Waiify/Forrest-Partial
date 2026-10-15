@@ -32,14 +32,12 @@ export default function CustomerDashboard() {
 
   const q = query.trim().toLowerCase();
 
-  // Filter reservations using the header search bar
   const reservations = RESERVATIONS.filter((r) =>
     `${r.date} ${r.capsule} ${r.status}`
       .toLowerCase()
       .includes(q)
   );
 
-  // Filter capsules using the header search bar
   const capsules = CAPSULES.filter((c) =>
     `${c.id} ${c.status}`
       .toLowerCase()
@@ -62,8 +60,7 @@ export default function CustomerDashboard() {
     setActive("My Reservation");
   };
 
-  // Cancel reservation
-  // Backend API can be connected later
+  // To cancel reservation
   const handleCancelReservation = (reservation) => {
     console.log("Cancel reservation:", reservation);
 
@@ -71,8 +68,7 @@ export default function CustomerDashboard() {
     setActive("My Reservation");
   };
 
-  // Reschedule reservation
-  // Backend API can be connected later
+  // To reschedule reservation
   const handleRescheduleReservation = (reservation) => {
     console.log("Reschedule reservation:", reservation);
 
@@ -84,41 +80,37 @@ export default function CustomerDashboard() {
     <div className="flex h-screen w-full bg-[#F5FAF7] text-[#16352A]">
 
       {/* =========================
-          SIDEBAR
+          SIDEBAR HERE HAHA
       ========================== */}
       <Sidebar
         active={active}
-        onNavigate={handleNavigate}
+        onNavigate={setActive}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
 
         {/* =========================
-            HEADER
+            HEADER DAYON
         ========================== */}
         <Header
           active={active}
           query={query}
           setQuery={setQuery}
+          onNavigate={setActive}
         />
 
         <main className="flex-1 overflow-y-auto p-6 md:p-8">
 
           {/* =====================================================
-              DASHBOARD
+              DASHBOARD NIYA
           ===================================================== */}
           {active === "Dashboard" && (
             <>
-              {/* Welcome Section */}
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-2xl font-bold text-[#0B4A2E]">
                     Welcome back, {user?.firstName || "Customer"}!
                   </h2>
-
-                  <p className="mt-1 text-sm text-[#6F8E7F]">
-                    Manage your reservations and workspace visits.
-                  </p>
                 </div>
 
                 <button
@@ -131,7 +123,6 @@ export default function CustomerDashboard() {
                 </button>
               </div>
 
-              {/* Statistics */}
               <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {STATS.map((s) => (
                   <StatCard
@@ -142,7 +133,7 @@ export default function CustomerDashboard() {
                 ))}
               </div>
 
-              {/* Upcoming Reservation + Quick Book */}
+              {/* Upcoming Reservation ug Quick Book */}
               <div className="mt-4 grid gap-4 lg:grid-cols-5">
 
                 {/* Upcoming Reservation */}
@@ -195,7 +186,7 @@ export default function CustomerDashboard() {
           )}
 
           {/* =====================================================
-              MY RESERVATION
+              MY RESERVATION NI
           ===================================================== */}
           {active === "My Reservation" && (
             <>
@@ -226,7 +217,7 @@ export default function CustomerDashboard() {
           )}
 
           {/* =====================================================
-              BOOK A CAPSULE
+              BOOK A CAPSULE NASAD
           ===================================================== */}
           {active === "Book a Capsule" && (
   <BookCapsule
@@ -235,8 +226,7 @@ export default function CustomerDashboard() {
     onSubmit={(reservation) => {
       console.log("Reservation submitted:", reservation);
 
-      // For now, return to My Reservation.
-      // Backend/MongoDB connection will be added next.
+      // For now, return sa to My Reservation.
       setSelectedReservation(reservation);
       setActive("My Reservation");
     }}
@@ -244,7 +234,7 @@ export default function CustomerDashboard() {
 )}
 
           {/* =====================================================
-              RESERVATION HISTORY
+              RESERVATION HISTORY HERE
           ===================================================== */}
           {active === "Reservation History" && (
             <div className="rounded-2xl bg-white p-8 shadow-sm">
@@ -258,23 +248,21 @@ export default function CustomerDashboard() {
               </p>
 
               <div className="mt-6 rounded-xl bg-[#F5FAF7] p-5">
-                <p className="text-sm text-[#6F8E7F]">
-                  Reservation history functionality will be connected here.
-                </p>
+               
               </div>
 
             </div>
           )}
 
           {/* =====================================================
-              PROFILE
+              PROFILE NIMO 
           ===================================================== */}
           {active === "Profile" && (
             <Profile user={user} />
           )}
 
           {/* =====================================================
-              HELP & SUPPORT
+              HELP & SUPPORT DRI
           ===================================================== */}
           {active === "Help & Support" && (
             <div className="rounded-2xl bg-white p-8 shadow-sm">

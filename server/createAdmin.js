@@ -11,7 +11,9 @@ async function run() {
   }
 
   await mongoose.connect(process.env.MONGODB_URI);
-  const users = mongoose.connection.collection('users');
+  const users = mongoose.connection.collection('Users');
+
+  
 
   if (await users.findOne({ role: 'admin' })) {
     console.log('An admin already exists. Nothing done.');
