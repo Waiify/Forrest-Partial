@@ -6,7 +6,9 @@ export default function Header({ active, query = "", setQuery = () => {} }) {
       ? "Status of every capsule available"
       : active === "Customers"
         ? "Manage customer records and activity"
-        : "Overview of your workspace";
+        : active === "Reservation"
+          ? "Manage capsule bookings and reservation status"
+          : "Overview of your workspace";
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#CFE3D9] bg-[#E8F3ED]/90 px-8 py-4 backdrop-blur">

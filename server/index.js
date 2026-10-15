@@ -158,6 +158,23 @@ const Capsule = mongoose.model('Capsule', new mongoose.Schema({
   isArchived:   { type: Boolean, default: false },
 }, { timestamps: true }), 'Capsules');
 
+const Reservation = mongoose.model('Reservation', new mongoose.Schema({
+  customerId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  guestName:     { type: String, required: true, trim: true },
+  guestEmail:    { type: String, required: true, trim: true, lowercase: true },
+  capsuleId:     { type: String, required: true, trim: true },
+  startAt:       { type: Date, required: true },
+  endAt:         { type: Date, required: true },
+  durationHours: { type: Number, required: true, min: 0.5, max: 24 },
+  pricePerHour:  { type: Number, required: true, min: 0 },
+  totalPrice:    { type: Number, required: true, min: 0 },
+  status:        {
+    type: String,
+    enum: ['Pending', 'Confirmed', 'Checked in', 'Completed', 'Cancelled'],
+    default: 'Pending',
+  },
+}, { timestamps: true }), 'Reservations');
+
 // GET: ?archived=true|false
 app.get('/api/capsules', async (req, res) => {
   try {
@@ -168,6 +185,111 @@ app.get('/api/capsules', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Could not load capsules' });
+  }
+});
+
+app.get('/api/reservations', async (req, res) => {
+  try {
+    const reservations = await Reservation.find().sort({ startAt: 1, createdAt: -1 }).lean();
+    res.json(reservations);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Could not load reservations' });
+  }
+});
+
+app.post('/api/reservations', async (req, res) => {
+  try {
+    const { customerId, capsuleId, startAt, durationHours, status } = req.body;
+    const hours = Number(durationHours);
+    const start = new Date(startAt);
+    const end = new Date(start.getTime() + hours * 60 * 60 * 1000);
+
+    if (
+      !mongoose.Types.ObjectId.isValid(customerId) ||
+      !capsuleId ||
+      Number.isNaN(start.getTime()) ||
+      !Number.isFinite(hours) ||
+      hours < 0.5 ||
+      hours > 24 ||
+      !['Pending', 'Confirmed'].includes(status || 'Pending')
+    ) {
+      return res.status(400).json({ message: 'Enter a customer, capsule, valid start time, and duration from 0.5 to 24 hours.' });
+    }
+
+    const customer = await User.findOne({ _id: customerId, role: 'customer', status: { $ne: 'disabled' } })
+      .select('firstName lastName email');
+    if (!customer) return res.status(404).json({ message: 'Customer not found or disabled' });
+
+    const capsule = await Capsule.findOne({
+      capsuleId: capsuleId.trim(),
+      isArchived: { $ne: true },
+      status: { $in: ['Available', 'Reserved'] },
+    }).select('capsuleId pricePerHour');
+    if (!capsule) return res.status(409).json({ message: 'This capsule is unavailable for reservations' });
+
+    const conflict = await Reservation.exists({
+      capsuleId: capsule.capsuleId,
+      status: { $nin: ['Cancelled', 'Completed'] },
+      startAt: { $lt: end },
+      endAt: { $gt: start },
+    });
+    if (conflict) return res.status(409).json({ message: 'This capsule already has a reservation during that time.' });
+
+    const reservation = await Reservation.create({
+      customerId: customer._id,
+      guestName: `${customer.firstName} ${customer.lastName}`.trim(),
+      guestEmail: customer.email,
+      capsuleId: capsule.capsuleId,
+      startAt: start,
+      endAt: end,
+      durationHours: hours,
+      pricePerHour: capsule.pricePerHour,
+      totalPrice: Number((capsule.pricePerHour * hours).toFixed(2)),
+      status: status || 'Pending',
+    });
+
+    res.status(201).json(reservation);
+  } catch (err) {
+    if (err.name === 'ValidationError') return res.status(400).json({ message: err.message });
+    console.error(err);
+    res.status(500).json({ message: 'Could not create reservation' });
+  }
+});
+
+app.patch('/api/reservations/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const allowedStatuses = ['Pending', 'Confirmed', 'Checked in', 'Completed', 'Cancelled'];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid reservation status' });
+    }
+
+    const reservation = await Reservation.findById(req.params.id);
+    if (!reservation) return res.status(404).json({ message: 'Reservation not found' });
+
+    if (['Pending', 'Confirmed', 'Checked in'].includes(status)) {
+      const conflict = await Reservation.exists({
+        _id: { $ne: reservation._id },
+        capsuleId: reservation.capsuleId,
+        status: { $nin: ['Cancelled', 'Completed'] },
+        startAt: { $lt: reservation.endAt },
+        endAt: { $gt: reservation.startAt },
+      });
+      if (conflict) {
+        return res.status(409).json({ message: 'This capsule already has a reservation during that time.' });
+      }
+    }
+
+    reservation.status = status;
+    await reservation.save();
+    res.json(reservation);
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid reservation' });
+    }
+    console.error(err);
+    res.status(500).json({ message: 'Could not update reservation' });
   }
 });
 

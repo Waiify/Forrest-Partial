@@ -14,6 +14,7 @@ import Dashboard from './admindashboard.jsx'
 import Customers from './Customers.jsx'
 import Management from './Management.jsx'
 import AdminCapsule from './admincapsule.jsx'
+import AdminReservation from './AdminReservation.jsx'
 import StaffDashboard from './StaffDashboard.jsx'
 import StaffCapsuleManagement from './StaffCapsuleManagement.jsx'
 import StaffCapsuleAvailability from './StaffCapsuleAvailability.jsx'
@@ -49,6 +50,8 @@ createRoot(document.getElementById('root')).render(
         {/* Dashboard and customer pages / Dashboard ug customer pages. */}
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/adminDashboard" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/reservation" element={<AdminReservation />} />
+        <Route path="/AdminReservation" element={<Navigate to="/reservation" replace />} />
         <Route path="/staff-dashboard" element={<StaffDashboard />} />
         <Route path="/StaffDashboard" element={<StaffDashboard />} />
         <Route path="/StaffCapsuleManagement" element={<StaffCapsuleManagement />} />

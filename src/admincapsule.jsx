@@ -308,6 +308,10 @@ export default function AdminCapsule() {
       navigate("/management");
       return;
     }
+    if (section === "Reservation") {
+      navigate("/reservation");
+      return;
+    }
     navigate("/dashboard");
   }
 
