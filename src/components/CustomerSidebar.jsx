@@ -71,44 +71,43 @@ export default function Sidebar({ active, onNavigate }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-  const loadUser = () => {
-    const storedUser = sessionStorage.getItem("user");
+    const loadUser = () => {
+      const storedUser = sessionStorage.getItem("user");
 
-    if (!storedUser) {
-      setUser(null);
-      return;
-    }
+      if (!storedUser) {
+        setUser(null);
+        return;
+      }
 
-    try {
-      setUser(JSON.parse(storedUser));
-    } catch (error) {
-      console.error(
-        "Failed to read user data:",
-        error
-      );
-    }
-  };
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (error) {
+        console.error(
+          "Failed to read user data:",
+          error
+        );
+      }
+    };
 
-  
-  loadUser();
+    loadUser();
 
-  // if naay change sa user data, i update ang state sa user
-  const handleUserUpdated = (event) => {
-    setUser(event.detail);
-  };
+    // Update sidebar user information when profile changes
+    const handleUserUpdated = (event) => {
+      setUser(event.detail);
+    };
 
-  window.addEventListener(
-    "userUpdated",
-    handleUserUpdated
-  );
-
-  return () => {
-    window.removeEventListener(
+    window.addEventListener(
       "userUpdated",
       handleUserUpdated
     );
-  };
-}, []);
+
+    return () => {
+      window.removeEventListener(
+        "userUpdated",
+        handleUserUpdated
+      );
+    };
+  }, []);
 
   const firstName = user?.firstName || "Customer";
   const lastName = user?.lastName || "";
@@ -123,7 +122,9 @@ export default function Sidebar({ active, onNavigate }) {
   return (
     <aside className="hidden w-[250px] shrink-0 flex-col bg-[#033D22] text-white md:flex">
 
-      {/* Logo */}
+      {/* =====================================================
+          LOGO
+      ====================================================== */}
       <div className="flex items-center gap-3 px-5 py-5">
         <img
           src={logo}
@@ -142,25 +143,41 @@ export default function Sidebar({ active, onNavigate }) {
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* =====================================================
+          NAVIGATION
+      ====================================================== */}
       <nav className="flex-1 space-y-5 px-3 pt-3">
 
         {NAV_ITEMS.map(({ group, items }) => (
           <div key={group}>
 
+            {/* Group Title */}
             <p className="px-3 pb-2 text-xs font-medium tracking-wide text-white/55">
               {group}
             </p>
 
             {items.map(({ id, label, icon: Icon }) => {
-              const isActive = active === id;
+
+              /*
+                History uses "History" in the sidebar,
+                while CustomerDashboard uses
+                "Reservation History" internally.
+
+                Treat both as the same active page.
+              */
+              const isActive =
+                active === id ||
+                (id === "History" &&
+                  active === "Reservation History");
 
               return (
                 <button
                   key={id}
                   type="button"
                   onClick={() => onNavigate(id)}
-                  aria-current={isActive ? "page" : undefined}
+                  aria-current={
+                    isActive ? "page" : undefined
+                  }
                   className={`mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
                     isActive
                       ? "bg-[#0A5A35] text-white"
@@ -178,14 +195,19 @@ export default function Sidebar({ active, onNavigate }) {
 
       </nav>
 
-      {/* Logged-in Customer */}
+      {/* =====================================================
+          LOGGED-IN CUSTOMER
+      ====================================================== */}
       <div className="m-4 flex items-center gap-3 border-t border-white/20 pt-4">
 
+        {/* Initials */}
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2F9E7A] text-xs font-bold">
           {initials}
         </div>
 
+        {/* User Information */}
         <div className="min-w-0 leading-tight">
+
           <p className="truncate text-sm font-semibold">
             {fullName}
           </p>
@@ -193,8 +215,8 @@ export default function Sidebar({ active, onNavigate }) {
           <p className="truncate text-xs text-white/60">
             @{username}
           </p>
-        </div>
 
+        </div>
       </div>
 
     </aside>
