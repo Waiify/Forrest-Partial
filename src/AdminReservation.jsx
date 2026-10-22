@@ -1,13 +1,16 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarDays, Plus, RefreshCw, X } from "lucide-react";
+import { CalendarDays, Plus, RefreshCw, Search, X } from "lucide-react";
 
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
 
-const API = "http://localhost:5000/api";
+// Set VITE_API_URL in your .env file (e.g. VITE_API_URL=https://your-api.com/api).
+// If you use Create React App, change this to process.env.REACT_APP_API_URL.
+const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const STATUSES = ["Pending", "Confirmed", "Checked in", "Completed", "Cancelled"];
-const ACTIVE_STATUSES = new Set(["Pending", "Confirmed", "Checked in"]);
+const BOOKABLE_CAPSULE_STATUSES = ["Available", "Reserved"];
+const OVERDUE_STATUSES = ["Checked in", "Completed"];
 
 const STATUS_STYLES = {
   Pending: "bg-amber-50 text-amber-700",
@@ -24,8 +27,6 @@ const PAYMENT_STATUS_STYLES = {
 };
 
 const PAYMENT_STATUSES = ["Unpaid", "Paid", "Refunded"];
-const PAYMENT_METHODS = ["", "Cash", "GCash", "Card", "Online"];
-const PAYMENT_METHOD_LABELS = { "": "—", Cash: "Cash", GCash: "GCash", Card: "Card", Online: "Online" };
 
 const inputClass =
   "h-10 w-full rounded-lg border border-[#CFE3D9] bg-white px-3 text-sm text-[#0B3B2A] outline-none focus:border-[#2F9E7A] focus:ring-2 focus:ring-[#2F9E7A]/25";
@@ -37,16 +38,27 @@ async function readResponse(response) {
   return data;
 }
 
+// If your admin routes need authentication, add the token here, e.g.
+// headers: { Authorization: `Bearer ${token}` } or credentials: "include".
+async function fetchCapsules() {
+  return fetch(`${API}/capsules?archived=false`).then(readResponse);
+}
+
 async function fetchReservationData() {
-  const [reservations, customers, capsules] = await Promise.all([
+  const [reservations, customers, allCapsules] = await Promise.all([
     fetch(`${API}/reservations`).then(readResponse),
     fetch(`${API}/users`).then(readResponse),
-    fetch(`${API}/capsules?archived=false`).then(readResponse),
+    fetchCapsules(),
   ]);
   return {
     reservations,
     customers,
-    capsules: capsules.filter((capsule) => ["Available", "Reserved"].includes(capsule.status)),
+    // Every capsule, so the filter and table can show any reservation's capsule.
+    allCapsules,
+    // Only capsules that can take a new booking, used by the form.
+    bookableCapsules: allCapsules.filter((capsule) =>
+      BOOKABLE_CAPSULE_STATUSES.includes(capsule.status)
+    ),
   };
 }
 
@@ -79,6 +91,10 @@ function formatCurrency(value) {
     currency: "PHP",
     maximumFractionDigits: 2,
   }).format(Number(value) || 0);
+}
+
+function sumPrice(list) {
+  return list.reduce((total, item) => total + (Number(item.totalPrice) || 0), 0);
 }
 
 // Component for displaying reservation summary statistics.
@@ -265,27 +281,33 @@ export default function AdminReservation() {
   const navigate = useNavigate();
   const [reservations, setReservations] = useState([]);
   const [customers, setCustomers] = useState([]);
-  const [capsules, setCapsules] = useState([]);
+  const [allCapsules, setAllCapsules] = useState([]);
+  const [bookableCapsules, setBookableCapsules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [capsuleFilter, setCapsuleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
+
+  function applyData(data) {
+    setReservations(data.reservations);
+    setCustomers(data.customers);
+    setAllCapsules(data.allCapsules);
+    setBookableCapsules(data.bookableCapsules);
+  }
 
   // Retrieves the latest reservation, customer, and capsule data.
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const data = await fetchReservationData();
-      setReservations(data.reservations);
-      setCustomers(data.customers);
-      setCapsules(data.capsules);
+      applyData(await fetchReservationData());
     } catch (err) {
       setError(err.message || "Could not load reservation data.");
     } finally {
@@ -297,10 +319,7 @@ export default function AdminReservation() {
     let current = true;
     fetchReservationData()
       .then((data) => {
-        if (!current) return;
-        setReservations(data.reservations);
-        setCustomers(data.customers);
-        setCapsules(data.capsules);
+        if (current) applyData(data);
       })
       .catch((err) => {
         if (current) setError(err.message || "Could not load reservation data.");
@@ -313,29 +332,60 @@ export default function AdminReservation() {
     };
   }, []);
 
+  // Quietly refreshes capsule availability after a booking changes.
+  async function refreshCapsules() {
+    try {
+      const capsules = await fetchCapsules();
+      setAllCapsules(capsules);
+      setBookableCapsules(
+        capsules.filter((capsule) => BOOKABLE_CAPSULE_STATUSES.includes(capsule.status))
+      );
+    } catch {
+      // The admin can still use the Refresh button if this fails.
+    }
+  }
+
   function handleNavigate(section) {
     if (section === "Customers") return navigate("/customers");
+    if (section === "Settings") return navigate("/settings");
     if (section === "Capsule") return navigate("/capsule");
     if (section === "Reservation") return navigate("/reservation");
     if (section === "Staff Management" || section === "Management") return navigate("/management");
     return navigate("/dashboard");
   }
 
-  // Applies all selected filters to the reservation list.
-  const filteredReservations = useMemo(
-    () => reservations.filter((reservation) => {
+  // Lets the table show a capsule's name instead of its raw ID.
+  const capsuleNames = useMemo(
+    () => Object.fromEntries(allCapsules.map((capsule) => [capsule.capsuleId, capsule.capsuleName])),
+    [allCapsules]
+  );
+
+  // Applies all selected filters and the customer search to the reservation list.
+  const filteredReservations = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return reservations.filter((reservation) => {
+      if (
+        query &&
+        !`${reservation.guestName || ""} ${reservation.guestEmail || ""}`.toLowerCase().includes(query)
+      ) {
+        return false;
+      }
       if (dateFilter && localDateValue(reservation.startAt) !== dateFilter) return false;
       if (capsuleFilter !== "all" && reservation.capsuleId !== capsuleFilter) return false;
       if (statusFilter !== "all" && reservation.status !== statusFilter) return false;
       if (paymentFilter !== "all" && (reservation.paymentStatus || "Unpaid") !== paymentFilter) return false;
       return true;
-    }),
-    [reservations, dateFilter, capsuleFilter, statusFilter, paymentFilter]
-  );
+    });
+  }, [reservations, search, dateFilter, capsuleFilter, statusFilter, paymentFilter]);
 
+  // Summary numbers. Cancelled bookings are excluded from payment figures.
   const pendingCount = reservations.filter((item) => item.status === "Pending").length;
-  const activeCount = reservations.filter((item) => ACTIVE_STATUSES.has(item.status)).length;
-  const paidCount = reservations.filter((item) => item.paymentStatus === "Paid").length;
+  const billable = reservations.filter((item) => item.status !== "Cancelled");
+  const paidCount = billable.filter((item) => item.paymentStatus === "Paid").length;
+  const collected = sumPrice(reservations.filter((item) => item.paymentStatus === "Paid"));
+  const outstanding = sumPrice(
+    billable.filter((item) => (item.paymentStatus || "Unpaid") === "Unpaid")
+  );
 
   // Saves a new reservation and refreshes the displayed data.
   async function createReservation(data) {
@@ -355,6 +405,16 @@ export default function AdminReservation() {
 
   // Updates a reservation booking status.
   async function updateStatus(reservation, status) {
+    if (
+      status === "Cancelled" &&
+      (reservation.paymentStatus || "Unpaid") === "Paid" &&
+      !window.confirm(
+        "This reservation is already paid. Cancel it anyway? Remember to mark the payment as Refunded."
+      )
+    ) {
+      return;
+    }
+
     setActionError("");
     setUpdatingId(reservation._id);
     try {
@@ -363,9 +423,11 @@ export default function AdminReservation() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       }));
+      // Merge into the existing row so fields the server omits (e.g. guestName) are kept.
       setReservations((current) =>
-        current.map((item) => item._id === updated._id ? updated : item)
+        current.map((item) => (item._id === updated._id ? { ...item, ...updated } : item))
       );
+      refreshCapsules();
     } catch (err) {
       setActionError(err.message || "Could not update reservation.");
     } finally {
@@ -373,7 +435,7 @@ export default function AdminReservation() {
     }
   }
 
-  // Updates the payment status and/or method for a reservation.
+  // Updates the payment status for a reservation.
   async function updatePayment(reservation, patch) {
     setActionError("");
     setUpdatingId(reservation._id + "-pay");
@@ -386,7 +448,7 @@ export default function AdminReservation() {
         })
       );
       setReservations((current) =>
-        current.map((item) => item._id === updated._id ? updated : item)
+        current.map((item) => (item._id === updated._id ? { ...item, ...updated } : item))
       );
     } catch (err) {
       setActionError(err.message || "Could not update payment.");
@@ -396,7 +458,7 @@ export default function AdminReservation() {
   }
 
   const hasFilters =
-    dateFilter || capsuleFilter !== "all" || statusFilter !== "all" || paymentFilter !== "all";
+    search || dateFilter || capsuleFilter !== "all" || statusFilter !== "all" || paymentFilter !== "all";
 
   return (
     <div className="flex h-screen w-full bg-[#F4F8F5] text-[#0B3B2A]">
@@ -424,7 +486,7 @@ export default function AdminReservation() {
             </div>
 
             {/* Stat cards */}
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <StatCard
                 label="All reservations"
                 value={reservations.length}
@@ -438,16 +500,22 @@ export default function AdminReservation() {
                 tint="bg-amber-50 text-amber-700"
               />
               <StatCard
-                label="Active bookings"
-                value={activeCount}
-                detail="Pending, confirmed, or checked in"
+                label="Payments confirmed"
+                value={paidCount}
+                detail={`of ${billable.length} non-cancelled`}
                 tint="bg-blue-50 text-blue-700"
               />
               <StatCard
-                label="Payments confirmed"
-                value={paidCount}
-                detail={`of ${reservations.filter((r) => r.status !== "Cancelled").length} non-cancelled`}
+                label="Collected"
+                value={formatCurrency(collected)}
+                detail="Paid bookings"
                 tint="bg-emerald-50 text-emerald-700"
+              />
+              <StatCard
+                label="Outstanding"
+                value={formatCurrency(outstanding)}
+                detail="Unpaid, not cancelled"
+                tint="bg-red-50 text-red-700"
               />
             </div>
 
@@ -474,6 +542,19 @@ export default function AdminReservation() {
 
               {/* Filters */}
               <div className="flex flex-wrap items-end gap-3 border-b border-[#DCEBE3] bg-[#FAFCFA] px-5 py-4 sm:px-6">
+                <label className="block min-w-48 flex-1 sm:max-w-64">
+                  <span className="mb-1.5 block text-xs font-semibold text-[#5F7F70]">Search customer</span>
+                  <span className="relative block">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9BB6A8]" />
+                    <input
+                      className={`${inputClass} pl-9`}
+                      type="search"
+                      placeholder="Name or email"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                    />
+                  </span>
+                </label>
                 <label className="block min-w-36 flex-1 sm:max-w-48">
                   <span className="mb-1.5 block text-xs font-semibold text-[#5F7F70]">Date</span>
                   <input
@@ -492,7 +573,7 @@ export default function AdminReservation() {
                     onChange={(event) => setCapsuleFilter(event.target.value)}
                   >
                     <option value="all">All capsules</option>
-                    {capsules.map((capsule) => (
+                    {allCapsules.map((capsule) => (
                       <option key={capsule.capsuleId} value={capsule.capsuleId}>
                         {capsule.capsuleName}
                       </option>
@@ -529,6 +610,7 @@ export default function AdminReservation() {
                   <button
                     type="button"
                     onClick={() => {
+                      setSearch("");
                       setDateFilter("");
                       setCapsuleFilter("all");
                       setStatusFilter("all");
@@ -556,7 +638,7 @@ export default function AdminReservation() {
               )}
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px] border-collapse text-left">
+                <table className="w-full min-w-[1000px] border-collapse text-left">
                   <thead>
                     <tr className="bg-[#F7FAF8]">
                       {[
@@ -567,7 +649,6 @@ export default function AdminReservation() {
                         "Amount",
                         "Booking status",
                         "Payment",
-                        "Method",
                       ].map((heading) => (
                         <th
                           key={heading}
@@ -581,19 +662,19 @@ export default function AdminReservation() {
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={8} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
+                        <td colSpan={7} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
                           Loading reservations...
                         </td>
                       </tr>
                     ) : error ? (
                       <tr>
-                        <td colSpan={8} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
+                        <td colSpan={7} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
                           Reservation data could not be loaded.
                         </td>
                       </tr>
                     ) : filteredReservations.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-5 py-14 text-center">
+                        <td colSpan={7} className="px-5 py-14 text-center">
                           <CalendarDays className="mx-auto h-8 w-8 text-[#9BB6A8]" />
                           <p className="mt-3 font-semibold text-[#0B3B2A]">No reservations found</p>
                           <p className="mt-1 text-sm text-[#6F8E7F]">
@@ -609,11 +690,14 @@ export default function AdminReservation() {
                           updatingId === reservation._id ||
                           updatingId === reservation._id + "-pay";
                         const payStatus = reservation.paymentStatus || "Unpaid";
-                        const payMethod = reservation.paymentMethod || "";
+                        const needsAttention =
+                          payStatus === "Unpaid" && OVERDUE_STATUSES.includes(reservation.status);
                         return (
                           <tr
                             key={reservation._id}
-                            className="border-b border-[#EEF3F0] last:border-0 hover:bg-[#FAFCFA]"
+                            className={`border-b border-[#EEF3F0] last:border-0 hover:bg-[#FAFCFA] ${
+                              needsAttention ? "bg-red-50/60" : ""
+                            }`}
                           >
                             {/* Customer */}
                             <td className="px-4 py-4">
@@ -626,7 +710,7 @@ export default function AdminReservation() {
                             </td>
                             {/* Capsule */}
                             <td className="px-4 py-4 text-sm font-medium text-[#315D49] whitespace-nowrap">
-                              {reservation.capsuleId}
+                              {capsuleNames[reservation.capsuleId] || reservation.capsuleId}
                             </td>
                             {/* Date & time */}
                             <td className="whitespace-nowrap px-4 py-4">
@@ -643,8 +727,15 @@ export default function AdminReservation() {
                               {reservation.durationHours === 1 ? "hr" : "hrs"}
                             </td>
                             {/* Amount */}
-                            <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-[#315D49]">
-                              {formatCurrency(reservation.totalPrice)}
+                            <td className="whitespace-nowrap px-4 py-4">
+                              <p className="text-sm font-medium text-[#315D49]">
+                                {formatCurrency(reservation.totalPrice)}
+                              </p>
+                              {needsAttention && (
+                                <p className="mt-0.5 text-xs font-semibold text-red-600">
+                                  Payment overdue
+                                </p>
+                              )}
                             </td>
                             {/* Booking status dropdown */}
                             <td className="px-4 py-4">
@@ -682,24 +773,6 @@ export default function AdminReservation() {
                                 ))}
                               </select>
                             </td>
-                            {/* Payment method dropdown */}
-                            <td className="px-4 py-4">
-                              <select
-                                aria-label={`Payment method for ${reservation.guestName}`}
-                                className="rounded-lg border border-[#CFE3D9] bg-white px-2.5 py-1.5 text-xs text-[#315D49] outline-none focus:ring-2 focus:ring-[#2F9E7A]/30 disabled:opacity-60"
-                                value={payMethod}
-                                disabled={isBusy}
-                                onChange={(event) =>
-                                  updatePayment(reservation, { paymentMethod: event.target.value })
-                                }
-                              >
-                                {PAYMENT_METHODS.map((m) => (
-                                  <option key={m} value={m}>
-                                    {PAYMENT_METHOD_LABELS[m]}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
                           </tr>
                         );
                       })
@@ -716,7 +789,7 @@ export default function AdminReservation() {
       {showForm && (
         <ReservationModal
           customers={customers}
-          capsules={capsules}
+          capsules={bookableCapsules}
           saving={saving}
           onClose={() => setShowForm(false)}
           onSave={createReservation}

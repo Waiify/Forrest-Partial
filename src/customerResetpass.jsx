@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Mail, ArrowLeft } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
+import useSettings from './useSettings2'
 import './index.css'
 import backgroundImage from './assets/page_background.jpg'
 
@@ -10,6 +11,10 @@ function ResetPassword() {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState({ loading: false, error: '', success: '' })
 
+  // On/off settings from the admin Settings page
+  const settings = useSettings()
+  const emailOff = !settings.emailEnabled
+
   const handleChange = (e) => {
     setEmail(e.target.value)
   }
@@ -18,7 +23,7 @@ function ResetPassword() {
     e.preventDefault()
     setStatus({ loading: true, error: '', success: '' })
 
-        try {
+    try {
       const res = await fetch('http://localhost:5000/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -48,7 +53,7 @@ function ResetPassword() {
     >
       <div className="absolute inset-0 bg-black/10 pointer-events-none"></div>
 
-      
+
       <div className="relative w-full max-w-md bg-white/95 rounded-2xl shadow-xl overflow-hidden border border-green-950 p-8 md:p-10">
 
         <h2 className="text-2xl font-bold text-green-800 mb-1 mt-2">Reset your password</h2>
@@ -58,6 +63,16 @@ function ResetPassword() {
 
         {!status.success ? (
           <form onSubmit={handleSubmit} className="signup-form flex flex-col gap-3">
+
+            {/* Shown right away when the admin has turned email off */}
+            {emailOff && (
+              <p
+                className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-3"
+                role="alert"
+              >
+                Password reset by email is currently unavailable. Please contact the administrator.
+              </p>
+            )}
 
             <div className="flex flex-col gap-1 mb-0.9">
               <label htmlFor="email" className="text-xs font-semibold text-green-800">Email Address</label>
@@ -71,7 +86,8 @@ function ResetPassword() {
                   value={email}
                   onChange={handleChange}
                   required
-                  className={inputClass}
+                  disabled={emailOff}
+                  className={`${inputClass} disabled:bg-gray-100`}
                 />
               </div>
             </div>
@@ -82,7 +98,7 @@ function ResetPassword() {
 
             <button
               type="submit"
-              disabled={status.loading}
+              disabled={status.loading || emailOff}
               className="w-full bg-green-900 text-white text-xs font-medium py-3 rounded-lg hover:bg-green-800 transition disabled:opacity-60 disabled:cursor-not-allowed mt-2"
             >
               {status.loading ? 'Sending link...' : 'Send Reset Link'}

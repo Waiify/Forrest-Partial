@@ -312,6 +312,10 @@ export default function AdminCapsule() {
       navigate("/reservation");
       return;
     }
+    if (section === "Settings") {
+      navigate("/settings");
+      return;
+    }
     navigate("/dashboard");
   }
 

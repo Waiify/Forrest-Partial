@@ -243,6 +243,8 @@ const Reservation = mongoose.model('Reservation', new mongoose.Schema({
     enum: ['Pending', 'Confirmed', 'Checked in', 'Completed', 'Cancelled'],
     default: 'Pending',
   },
+  // Payment tracking (monitored on the admin Reservation page)
+  paymentStatus: { type: String, enum: ['Unpaid', 'Paid', 'Refunded'], default: 'Unpaid' },
 }, { timestamps: true }), 'Reservations');
 
 // GET: ?archived=true|false
@@ -363,6 +365,107 @@ app.patch('/api/reservations/:id', async (req, res) => {
   }
 });
 
+// PATCH: update payment status
+app.patch('/api/reservations/:id/payment', async (req, res) => {
+  try {
+    const { paymentStatus } = req.body;
+    if (!['Unpaid', 'Paid', 'Refunded'].includes(paymentStatus)) {
+      return res.status(400).json({ message: 'Invalid payment status' });
+    }
+    const update = { paymentStatus };
+
+    const reservation = await Reservation.findByIdAndUpdate(req.params.id, update, {
+      returnDocument: 'after',
+      runValidators: true,
+    });
+    if (!reservation) return res.status(404).json({ message: 'Reservation not found' });
+    res.json(reservation);
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid reservation' });
+    }
+    console.error(err);
+    res.status(500).json({ message: 'Could not update payment' });
+  }
+});
+
+// SETTINGS (admin Settings page: turn integrations on or off)
+const SETTING_KEYS = ['googleAuthEnabled', 'recaptchaEnabled', 'emailEnabled', 'smsEnabled'];
+
+const Settings = mongoose.model('Settings', new mongoose.Schema({
+  key:              { type: String, default: 'app', unique: true },
+  googleAuthEnabled: { type: Boolean, default: true },
+  recaptchaEnabled:  { type: Boolean, default: true },
+  emailEnabled:      { type: Boolean, default: true },
+  smsEnabled:        { type: Boolean, default: true },
+}, { timestamps: true }), 'Settings');
+
+const pickSettings = (doc) => Object.fromEntries(SETTING_KEYS.map((k) => [k, doc[k]]));
+
+// Returns the settings, creating the document with defaults the first time.
+// If the database call fails, everything counts as ON so security is never weakened by an error.
+async function getSettings() {
+  try {
+    return await Settings.findOneAndUpdate(
+      { key: 'app' },
+      { $setOnInsert: { key: 'app' } },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    );
+  } catch (err) {
+    console.error('Could not load settings:', err);
+    return Object.fromEntries(SETTING_KEYS.map((k) => [k, true]));
+  }
+}
+
+// Only a real, enabled admin account may change settings.
+// The admin page sends the logged-in user's id in the x-user-id header.
+async function requireAdmin(req, res, next) {
+  try {
+    const id = req.get('x-user-id');
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(401).json({ message: 'Admin login required' });
+    }
+    const admin = await User.findOne({ _id: id, role: 'admin', status: { $ne: 'disabled' } }).select('_id');
+    if (!admin) return res.status(403).json({ message: 'Admin access only' });
+    next();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// GET: public, so the login and signup pages can hide turned-off options
+app.get('/api/settings', async (req, res) => {
+  const settings = await getSettings();
+  res.json(pickSettings(settings));
+});
+
+// PATCH: admin only
+app.patch('/api/settings', requireAdmin, async (req, res) => {
+  try {
+    const update = {};
+    for (const key of SETTING_KEYS) {
+      if (req.body[key] === undefined) continue;
+      if (typeof req.body[key] !== 'boolean') {
+        return res.status(400).json({ message: `${key} must be true or false` });
+      }
+      update[key] = req.body[key];
+    }
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ message: 'Nothing to update' });
+    }
+    const settings = await Settings.findOneAndUpdate(
+      { key: 'app' },
+      { $set: update },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    );
+    res.json(pickSettings(settings));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Could not update settings' });
+  }
+});
+
 // POST: maghimo og bag-ong capsule
 app.post('/api/capsules', async (req, res) => {
   try {
@@ -424,6 +527,7 @@ app.patch('/api/capsules/:id/restore', (req, res) => setArchived(req, res, false
 // reCAPTCHA
 app.post('/verify-captcha', async (req, res) => {
   const { token } = req.body;
+  if (!(await getSettings()).recaptchaEnabled) return res.json({ success: true, skipped: true });
   if (!token) return res.status(400).json({ success: false });
 
   try {
@@ -515,6 +619,9 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/google-sync', async (req, res) => {
   try {
+    if (!(await getSettings()).googleAuthEnabled) {
+      return res.status(403).json({ message: 'Google sign-in is currently disabled' });
+    }
     const decoded = await getAuth().verifyIdToken(req.body.idToken);
     if (!decoded.email_verified) return res.status(401).json({ message: 'Email not verified' });
 
@@ -570,6 +677,10 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const email = (req.body.email || '').toLowerCase().trim();
     const user = await User.findOne({ email });
+
+    if (!(await getSettings()).emailEnabled) {
+      return res.status(503).json({ message: 'Password reset by email is currently unavailable.' });
+    }
 
     if (!user || !user.password) return res.json(genericReply);
 

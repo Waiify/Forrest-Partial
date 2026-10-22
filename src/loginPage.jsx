@@ -5,6 +5,7 @@ import ReCAPTCHA from "react-google-recaptcha";
 import { Eye, EyeOff, Mail, Lock, KeyRound } from "lucide-react";
 
 import { auth, googleProvider } from "./firebase";
+import useSettings from "./useSettings2";
 import pageBackground from "./assets/page_background.jpeg"; // usba kung .jpg ang tinuod nimong file
 import logo from "./assets/logo.jpg";
 import googleImage from "./assets/G-logo.png";
@@ -26,6 +27,9 @@ const inputClass =
 export default function Login() {
   const navigate = useNavigate();
 
+  // On/off settings from the admin Settings page
+  const settings = useSettings();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -44,6 +48,9 @@ export default function Login() {
 
   // Ok ra kung na-tick ang CAPTCHA ug gi-confirm sa Google (via backend)
   async function verifyCaptcha() {
+    // The admin turned reCAPTCHA off, so there is nothing to check.
+    if (!settings.recaptchaEnabled) return { ok: true };
+
     if (!captchaToken) {
       return { ok: false, message: "Please complete the CAPTCHA." };
     }
@@ -272,22 +279,28 @@ export default function Login() {
             {/* Forgot password + CAPTCHA: tago kung admin code step na */}
             {!needsAdminCode && (
               <>
-                <div className="flex justify-end">
-                  <Link to="/reset-password" className="text-xs font-medium text-[#003F22] hover:underline">
-                    Forgot Password?
-                  </Link>
-                </div>
-
-                <div className="flex justify-center" style={{ height: 66 }}>
-                  <div style={{ transform: "scale(0.85)", transformOrigin: "top center" }}>
-                    <ReCAPTCHA
-                      ref={recaptchaRef}
-                      sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
-                      onChange={(token) => setCaptchaToken(token)}
-                      onExpired={() => setCaptchaToken(null)}
-                    />
+                {/* Hidden when email is off, because reset codes are sent by email */}
+                {settings.emailEnabled && (
+                  <div className="flex justify-end">
+                    <Link to="/reset-password" className="text-xs font-medium text-[#003F22] hover:underline">
+                      Forgot Password?
+                    </Link>
                   </div>
-                </div>
+                )}
+
+                {/* Hidden when the admin turns reCAPTCHA off */}
+                {settings.recaptchaEnabled && (
+                  <div className="flex justify-center" style={{ height: 66 }}>
+                    <div style={{ transform: "scale(0.85)", transformOrigin: "top center" }}>
+                      <ReCAPTCHA
+                        ref={recaptchaRef}
+                        sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
+                        onChange={(token) => setCaptchaToken(token)}
+                        onExpired={() => setCaptchaToken(null)}
+                      />
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
@@ -314,21 +327,26 @@ export default function Login() {
           {/* Google sign-in + sign up: tago kung admin code step na */}
           {!needsAdminCode && (
             <>
-              <div className="my-4 flex items-center gap-3">
-                <div className="h-px flex-1 bg-slate-300" />
-                <span className="text-xs text-slate-500">or</span>
-                <div className="h-px flex-1 bg-slate-300" />
-              </div>
+              {/* Hidden when the admin turns Google sign-in off */}
+              {settings.googleAuthEnabled && (
+                <>
+                  <div className="my-4 flex items-center gap-3">
+                    <div className="h-px flex-1 bg-slate-300" />
+                    <span className="text-xs text-slate-500">or</span>
+                    <div className="h-px flex-1 bg-slate-300" />
+                  </div>
 
-              <button
-                type="button"
-                onClick={handleGoogle}
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-medium text-slate-700 shadow-sm hover:shadow-md hover:bg-white transition disabled:opacity-50"
-              >
-                <img src={googleImage} alt="" className="h-4 w-4" />
-                Continue with Google
-              </button>
+                  <button
+                    type="button"
+                    onClick={handleGoogle}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-medium text-slate-700 shadow-sm hover:shadow-md hover:bg-white transition disabled:opacity-50"
+                  >
+                    <img src={googleImage} alt="" className="h-4 w-4" />
+                    Continue with Google
+                  </button>
+                </>
+              )}
 
               <p className="mt-4 text-center text-sm text-slate-600">
                 No account yet?{" "}

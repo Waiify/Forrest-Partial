@@ -112,6 +112,10 @@ export default function Customers() {
       navigate("/reservation");
       return;
     }
+    if (section === "Settings") {
+      navigate("/settings");
+      return;
+    }
     navigate("/dashboard");
   }
 

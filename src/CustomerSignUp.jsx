@@ -3,6 +3,7 @@ import { Eye, EyeOff, User, Mail, Lock } from 'lucide-react'
 import { signInWithPopup } from 'firebase/auth'
 import { auth, googleProvider } from './firebase'
 import { useNavigate } from 'react-router-dom'
+import useSettings from './useSettings2'
 import backgroundImage from './assets/page_background.jpg'
 import googleLogo from './assets/G-logo.png'
 import logoImage from './assets/logo.jpg'
@@ -19,6 +20,9 @@ function CustomerSignUp() {
   })
 
   const navigate = useNavigate()
+
+  // On/off settings from the admin Settings page
+  const settings = useSettings()
 
   const [showPassword, setShowPassword] = useState(false)
 
@@ -327,35 +331,40 @@ function CustomerSignUp() {
               {status.loading ? 'Signing Up...' : 'Sign Up'}
             </button>
 
-            {/* DIVIDER */}
-            <div className="flex items-center gap-3 my-1">
-              <div className="flex-1 h-px bg-gray-200" />
+            {/* GOOGLE SIGN-UP: hidden when the admin turns Google sign-in off */}
+            {settings.googleAuthEnabled && (
+              <>
+                {/* DIVIDER */}
+                <div className="flex items-center gap-3 my-1">
+                  <div className="flex-1 h-px bg-gray-200" />
 
-              <span className="text-xs text-gray-400">
-                or sign up with
-              </span>
+                  <span className="text-xs text-gray-400">
+                    or sign up with
+                  </span>
 
-              <div className="flex-1 h-px bg-gray-200" />
-            </div>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
 
-            {/* GOOGLE SIGN-UP */}
-            <button
-              type="button"
-              onClick={handleGoogleSignUp}
-              disabled={status.loading}
-              className="google-signup-button w-full flex items-center justify-center gap-2 border border-gray-300 rounded-lg py-3 text-xs font-medium hover:bg-gray-50 transition mb-3 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <img
-                src={googleLogo}
-                alt="Google Icon"
-                className="google-icon h-4 w-4"
-              />
+                {/* GOOGLE SIGN-UP */}
+                <button
+                  type="button"
+                  onClick={handleGoogleSignUp}
+                  disabled={status.loading}
+                  className="google-signup-button w-full flex items-center justify-center gap-2 border border-gray-300 rounded-lg py-3 text-xs font-medium hover:bg-gray-50 transition mb-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <img
+                    src={googleLogo}
+                    alt="Google Icon"
+                    className="google-icon h-4 w-4"
+                  />
 
-              {status.loading
-                ? 'Connecting to Google...'
-                : 'Continue with Google'}
+                  {status.loading
+                    ? 'Connecting to Google...'
+                    : 'Continue with Google'}
 
-            </button>
+                </button>
+              </>
+            )}
 
           </form>
 
