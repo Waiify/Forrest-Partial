@@ -104,7 +104,7 @@ export const STATS = [
     note: "Next reservation is in 2 days",
     icon: CalendarDays,
     tint: "bg-[#CFE9DC]",
-    go: "My Reservations",
+    go: "My Reservation",
   },
   {
     label: "Active Reservation",

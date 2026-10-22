@@ -6,10 +6,15 @@ export default function Header({
   query = "",
   setQuery = () => {},
   onNavigate = () => {},
+  notifications = [],
 }) {
   const [customerName, setCustomerName] = useState("Customer");
   const [customerInitials, setCustomerInitials] = useState("C");
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  const unreadNotifications = notifications.filter(
+  (notification) => !notification.read
+).length;
 
   const profileMenuRef = useRef(null);
 
@@ -190,16 +195,23 @@ export default function Header({
         </div>
 
         {/* Notifications */}
-        <button
-          type="button"
-          aria-label="Notifications"
-          title="Notifications"
-          onClick={handleNotifications}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#CFE3D9] bg-white/70 transition hover:bg-white"
-        >
-          <Bell className="h-4 w-4" />
-        </button>
+       <button
+  type="button"
+  aria-label="Notifications"
+  title="Notifications"
+  onClick={handleNotifications}
+  className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#CFE3D9] bg-white/70 transition hover:bg-white"
+>
+  <Bell className="h-4 w-4" />
 
+  {unreadNotifications > 0 && (
+    <span className="absolute right-[-6px] top-[-6px] z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+      {unreadNotifications > 9
+        ? "9+"
+        : unreadNotifications}
+    </span>
+  )}
+</button>
         {/* Profile ug Logout Dropdown */}
         <div
           ref={profileMenuRef}

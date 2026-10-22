@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   Clock3,
@@ -10,30 +10,121 @@ import {
 
 export default function BookCapsule({
   capsules = [],
+  bookingSelection = null,
   onBack,
   onSubmit,
 }) {
-  const [selectedDate, setSelectedDate] = useState("");
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
-  const [selectedCapsule, setSelectedCapsule] = useState("");
+  const [selectedDate, setSelectedDate] = useState(
+  bookingSelection?.date
+    ? (() => {
+        const date = new Date(
+          bookingSelection.date
+        );
+
+        return `${date.getFullYear()}-${String(
+          date.getMonth() + 1
+        ).padStart(2, "0")}-${String(
+          date.getDate()
+        ).padStart(2, "0")}`;
+      })()
+    : ""
+);
+
+  const [startTime, setStartTime] = useState(() => {
+    if (!bookingSelection?.time) return "";
+
+    return bookingSelection.time.split(" - ")[0] || "";
+  });
+
+  const [endTime, setEndTime] = useState(() => {
+    if (!bookingSelection?.time) return "";
+
+    return bookingSelection.time.split(" - ")[1] || "";
+  });
+
+  const [selectedCapsule, setSelectedCapsule] =
+    useState(
+      bookingSelection?.capsule?.id || ""
+    );
+
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
 
-  
-   /*Ang available nga capsules ra ang ipakita */
-   
+ /* =====================================================
+   PREFILL FROM CAPSULE AVAILABILITY
+====================================================== */
+
+useEffect(() => {
+  if (!bookingSelection) return;
+
+  /* Date */
+  if (bookingSelection.date) {
+    const date =
+      bookingSelection.date instanceof Date
+        ? bookingSelection.date
+        : new Date(bookingSelection.date);
+
+    const localDate =
+      `${date.getFullYear()}-${String(
+        date.getMonth() + 1
+      ).padStart(2, "0")}-${String(
+        date.getDate()
+      ).padStart(2, "0")}`;
+
+    setSelectedDate(localDate);
+  }
+    /* Time */
+    if (bookingSelection.time) {
+      const [start, end] =
+        bookingSelection.time.split(" - ");
+
+      setStartTime(start || "");
+      setEndTime(end || "");
+    }
+
+    /* Capsule */
+    if (bookingSelection.capsule?.id) {
+      setSelectedCapsule(
+        bookingSelection.capsule.id
+      );
+    }
+
+    setStep(1);
+    setError("");
+  }, [bookingSelection]);
+
+
+  /* =====================================================
+     AVAILABLE CAPSULES
+  ====================================================== */
+
   const availableCapsules = useMemo(() => {
     return capsules.filter(
       (capsule) =>
-        capsule.status?.toLowerCase() === "available"
+        capsule.status?.toLowerCase() ===
+        "available"
     );
   }, [capsules]);
-  
-   /*Error Handling ni kay e prevent niya nga mag select ug past date*/
-  const today = new Date().toISOString().split("T")[0];
 
-   /*form validation */
+
+  /* =====================================================
+     TODAY
+  ====================================================== */
+
+  const today = (() => {
+  const date = new Date();
+
+  return `${date.getFullYear()}-${String(
+    date.getMonth() + 1
+  ).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+})();
+
+  /* =====================================================
+     VALIDATION
+  ====================================================== */
+
   const validateBooking = () => {
     if (!selectedDate) {
       setError("Please select a date.");
@@ -41,22 +132,30 @@ export default function BookCapsule({
     }
 
     if (!startTime) {
-      setError("Please select a check-in time.");
+      setError(
+        "Please select a check-in time."
+      );
       return false;
     }
 
     if (!endTime) {
-      setError("Please select a check-out time.");
+      setError(
+        "Please select a check-out time."
+      );
       return false;
     }
 
     if (!selectedCapsule) {
-      setError("Please select a capsule.");
+      setError(
+        "Please select a capsule."
+      );
       return false;
     }
 
     if (endTime <= startTime) {
-      setError("Check-out time must be later than check-in time.");
+      setError(
+        "Check-out time must be later than check-in time."
+      );
       return false;
     }
 
@@ -64,21 +163,30 @@ export default function BookCapsule({
     return true;
   };
 
-  
-   /*After selecting, e confirm dayon */
+
+  /* =====================================================
+     CONTINUE TO CONFIRMATION
+  ====================================================== */
+
   const handleContinue = () => {
     if (!validateBooking()) return;
 
     setStep(2);
   };
 
-  /* Submit the reservation. Wala pay database*/
+
+  /* =====================================================
+     SUBMIT RESERVATION
+  ====================================================== */
+
   const handleSubmit = () => {
     if (!validateBooking()) return;
 
-    const selected = availableCapsules.find(
-      (capsule) => capsule.id === selectedCapsule
-    );
+    const selected =
+      availableCapsules.find(
+        (capsule) =>
+          capsule.id === selectedCapsule
+      );
 
     const reservation = {
       date: selectedDate,
@@ -86,23 +194,32 @@ export default function BookCapsule({
       checkOut: endTime,
       capsule: selectedCapsule,
       capsuleName:
-        selected?.name || `Capsule ${selectedCapsule}`,
+        selected?.name ||
+        `Capsule ${selectedCapsule}`,
       status: "Pending",
     };
 
     onSubmit?.(reservation);
   };
 
+
+  /* =====================================================
+     RETURN
+  ====================================================== */
+
   return (
     <div className="space-y-5">
 
-      
+      {/* =================================================
+          HEADER
+      ================================================== */}
+
       <div className="flex flex-wrap items-start justify-between gap-3">
+
         <div>
           <h2 className="text-2xl font-bold text-[#0B4A2E]">
             Book Now
           </h2>
-
         </div>
 
         <button
@@ -113,13 +230,20 @@ export default function BookCapsule({
           <ArrowLeft className="h-4 w-4" />
           Back
         </button>
+
       </div>
 
-     
+
+      {/* =================================================
+          PROGRESS
+      ================================================== */}
+
       <div className="rounded-2xl bg-white p-5 shadow-sm">
+
         <div className="flex items-center gap-3">
 
-        
+          {/* STEP 1 */}
+
           <div
             className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${
               step === 1
@@ -142,7 +266,9 @@ export default function BookCapsule({
 
           <div className="h-px w-10 bg-[#D7E7DE]" />
 
-         
+
+          {/* STEP 2 */}
+
           <div
             className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${
               step === 2
@@ -166,16 +292,23 @@ export default function BookCapsule({
         </div>
       </div>
 
-      
+
+      {/* =================================================
+          STEP 1
+      ================================================== */}
+
       {step === 1 && (
         <>
-         
+          {/* DATE + TIME */}
+
           <div className="grid gap-5 lg:grid-cols-2">
 
-           
+            {/* DATE */}
+
             <section className="rounded-2xl bg-white p-6 shadow-sm">
 
               <div className="mb-5 flex items-center gap-3">
+
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E5F2EB]">
                   <CalendarDays className="h-5 w-5 text-[#0B4A2E]" />
                 </div>
@@ -189,6 +322,7 @@ export default function BookCapsule({
                     When would you like to use the capsule?
                   </p>
                 </div>
+
               </div>
 
               <input
@@ -196,7 +330,9 @@ export default function BookCapsule({
                 min={today}
                 value={selectedDate}
                 onChange={(e) => {
-                  setSelectedDate(e.target.value);
+                  setSelectedDate(
+                    e.target.value
+                  );
                   setError("");
                 }}
                 className="w-full rounded-xl border border-[#D7E7DE] bg-[#F8FBF9] px-4 py-3 text-sm text-[#16352A] outline-none transition focus:border-[#0B4A2E] focus:ring-2 focus:ring-[#0B4A2E]/10"
@@ -204,10 +340,13 @@ export default function BookCapsule({
 
             </section>
 
-          
+
+            {/* TIME */}
+
             <section className="rounded-2xl bg-white p-6 shadow-sm">
 
               <div className="mb-5 flex items-center gap-3">
+
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E5F2EB]">
                   <Clock3 className="h-5 w-5 text-[#0B4A2E]" />
                 </div>
@@ -221,11 +360,16 @@ export default function BookCapsule({
                     Choose your check-in and check-out time.
                   </p>
                 </div>
+
               </div>
+
 
               <div className="grid grid-cols-2 gap-3">
 
+                {/* CHECK-IN */}
+
                 <div>
+
                   <label className="mb-1.5 block text-xs font-medium text-[#4E6B5D]">
                     Check-in
                   </label>
@@ -234,14 +378,21 @@ export default function BookCapsule({
                     type="time"
                     value={startTime}
                     onChange={(e) => {
-                      setStartTime(e.target.value);
+                      setStartTime(
+                        e.target.value
+                      );
                       setError("");
                     }}
                     className="w-full rounded-xl border border-[#D7E7DE] bg-[#F8FBF9] px-3 py-3 text-sm text-[#16352A] outline-none focus:border-[#0B4A2E]"
                   />
+
                 </div>
 
+
+                {/* CHECK-OUT */}
+
                 <div>
+
                   <label className="mb-1.5 block text-xs font-medium text-[#4E6B5D]">
                     Check-out
                   </label>
@@ -250,29 +401,39 @@ export default function BookCapsule({
                     type="time"
                     value={endTime}
                     onChange={(e) => {
-                      setEndTime(e.target.value);
+                      setEndTime(
+                        e.target.value
+                      );
                       setError("");
                     }}
                     className="w-full rounded-xl border border-[#D7E7DE] bg-[#F8FBF9] px-3 py-3 text-sm text-[#16352A] outline-none focus:border-[#0B4A2E]"
                   />
+
                 </div>
 
               </div>
 
             </section>
+
           </div>
 
-          {/* Makita ang available capsules */}
+
+          {/* =================================================
+              AVAILABLE CAPSULES
+          ================================================== */}
+
           <section className="rounded-2xl bg-white p-6 shadow-sm">
 
             <div className="mb-5 flex items-center justify-between gap-3">
 
               <div className="flex items-center gap-3">
+
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E5F2EB]">
                   <BedSingle className="h-5 w-5 text-[#0B4A2E]" />
                 </div>
 
                 <div>
+
                   <h3 className="font-semibold text-[#0B3B2A]">
                     Available Capsules
                   </h3>
@@ -280,8 +441,11 @@ export default function BookCapsule({
                   <p className="text-xs text-[#7A9185]">
                     Select one capsule for your reservation.
                   </p>
+
                 </div>
+
               </div>
+
 
               <span className="rounded-full bg-[#EAF4EE] px-3 py-1 text-xs font-semibold text-[#287A4B]">
                 {availableCapsules.length} available
@@ -289,95 +453,125 @@ export default function BookCapsule({
 
             </div>
 
+
             {availableCapsules.length > 0 ? (
+
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 
-                {availableCapsules.map((capsule) => {
-                  const isSelected =
-                    selectedCapsule === capsule.id;
+                {availableCapsules.map(
+                  (capsule) => {
 
-                  return (
-                    <button
-                      key={capsule.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCapsule(capsule.id);
-                        setError("");
-                      }}
-                      className={`group overflow-hidden rounded-xl border text-left transition ${
-                        isSelected
-                          ? "border-[#0B4A2E] bg-[#F0F8F3] ring-2 ring-[#0B4A2E]/10"
-                          : "border-[#DDEAE3] bg-[#F8FBF9] hover:border-[#B8D7C8] hover:shadow-sm"
-                      }`}
-                    >
+                    const isSelected =
+                      selectedCapsule ===
+                      capsule.id;
 
-                  
-                      <div className="relative h-45 overflow-hidden bg-[#DDEDE5]">
+                    return (
+                      <button
+                        key={capsule.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCapsule(
+                            capsule.id
+                          );
+                          setError("");
+                        }}
+                        className={`group overflow-hidden rounded-xl border text-left transition ${
+                          isSelected
+                            ? "border-[#0B4A2E] bg-[#F0F8F3] ring-2 ring-[#0B4A2E]/10"
+                            : "border-[#DDEAE3] bg-[#F8FBF9] hover:border-[#B8D7C8] hover:shadow-sm"
+                        }`}
+                      >
 
-                        {capsule.image ? (
-                          <img
-                            src={capsule.image}
-                            alt={
-                              capsule.name ||
-                              `Capsule ${capsule.id}`
-                            }
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#DCEDE4] to-[#BFDCCB]">
-                            <BedSingle className="h-12 w-12 text-[#4D8067]" />
+                        {/* IMAGE */}
+
+                        <div className="relative h-45 overflow-hidden bg-[#DDEDE5]">
+
+                          {capsule.image ? (
+
+                            <img
+                              src={
+                                capsule.image
+                              }
+                              alt={
+                                capsule.name ||
+                                `Capsule ${capsule.id}`
+                              }
+                              className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                            />
+
+                          ) : (
+
+                            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#DCEDE4] to-[#BFDCCB]">
+
+                              <BedSingle className="h-12 w-12 text-[#4D8067]" />
+
+                            </div>
+
+                          )}
+
+
+                          <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-[#287A4B] shadow-sm">
+
+                            <CheckCircle2 className="h-3 w-3" />
+
+                            Available
+
                           </div>
-                        )}
 
-                        <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-[#287A4B] shadow-sm">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Available
                         </div>
 
-                      </div>
 
-                   
-                      <div className="p-4">
+                        {/* CAPSULE INFO */}
 
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="p-4">
 
-                          <h4 className="font-semibold text-[#0B3B2A]">
-                            {capsule.name ||
-                              `Capsule ${capsule.id}`}
-                          </h4>
+                          <div className="flex items-center justify-between gap-2">
 
-                          {isSelected && (
-                            <CheckCircle2 className="h-5 w-5 text-[#0B4A2E]" />
+                            <h4 className="font-semibold text-[#0B3B2A]">
+                              {capsule.name ||
+                                `Capsule ${capsule.id}`}
+                            </h4>
+
+                            {isSelected && (
+                              <CheckCircle2 className="h-5 w-5 text-[#0B4A2E]" />
+                            )}
+
+                          </div>
+
+
+                          <p className="mt-1 text-xs text-[#6F8E7F]">
+                            Ready for booking
+                          </p>
+
+
+                          {capsule.price && (
+                            <p className="mt-2 text-xs font-semibold text-[#0B4A2E]">
+                              ₱{capsule.price}
+
+                              <span className="font-normal text-[#7A9185]">
+                                {" "}
+                                / hour
+                              </span>
+                            </p>
                           )}
 
                         </div>
 
-                        <p className="mt-1 text-xs text-[#6F8E7F]">
-                          Ready for booking
-                        </p>
-
-                        {capsule.price && (
-                          <p className="mt-2 text-xs font-semibold text-[#0B4A2E]">
-                            ₱{capsule.price}
-                            <span className="font-normal text-[#7A9185]">
-                              {" "}
-                              / hour
-                            </span>
-                          </p>
-                        )}
-
-                      </div>
-
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  }
+                )}
 
               </div>
+
             ) : (
+
               <div className="rounded-xl border border-dashed border-[#D7E7DE] bg-[#F8FBF9] px-6 py-12 text-center">
 
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#E5F2EB]">
+
                   <BedSingle className="h-6 w-6 text-[#4D8067]" />
+
                 </div>
 
                 <p className="mt-3 font-semibold text-[#0B3B2A]">
@@ -389,17 +583,23 @@ export default function BookCapsule({
                 </p>
 
               </div>
+
             )}
+
           </section>
 
-          
+
+          {/* ERROR */}
+
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
             </div>
           )}
 
-         
+
+          {/* CONTINUE */}
+
           <div className="flex justify-end">
 
             <button
@@ -408,18 +608,27 @@ export default function BookCapsule({
               className="inline-flex items-center gap-2 rounded-xl bg-[#0B4A2E] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#09391F]"
             >
               Continue
+
               <ArrowRight className="h-4 w-4" />
+
             </button>
 
           </div>
+
         </>
       )}
 
-      
+
+      {/* =================================================
+          STEP 2
+      ================================================== */}
+
       {step === 2 && (
+
         <section className="rounded-2xl bg-white p-6 shadow-sm">
 
           <div className="mb-6">
+
             <h3 className="text-lg font-bold text-[#0B3B2A]">
               Confirm Reservation
             </h3>
@@ -427,12 +636,18 @@ export default function BookCapsule({
             <p className="mt-1 text-sm text-[#6F8E7F]">
               Review your reservation details before submitting.
             </p>
+
           </div>
+
+
+          {/* RESERVATION DETAILS */}
 
           <div className="grid gap-4 md:grid-cols-2">
 
-        
+            {/* DATE */}
+
             <div className="rounded-xl bg-[#F5FAF7] p-4">
+
               <p className="text-xs text-[#7A9185]">
                 Date
               </p>
@@ -440,10 +655,14 @@ export default function BookCapsule({
               <p className="mt-1 font-semibold text-[#0B3B2A]">
                 {selectedDate}
               </p>
+
             </div>
 
-          
+
+            {/* TIME */}
+
             <div className="rounded-xl bg-[#F5FAF7] p-4">
+
               <p className="text-xs text-[#7A9185]">
                 Reservation Time
               </p>
@@ -451,10 +670,14 @@ export default function BookCapsule({
               <p className="mt-1 font-semibold text-[#0B3B2A]">
                 {startTime} - {endTime}
               </p>
+
             </div>
 
-      
+
+            {/* CAPSULE */}
+
             <div className="rounded-xl bg-[#F5FAF7] p-4">
+
               <p className="text-xs text-[#7A9185]">
                 Capsule
               </p>
@@ -462,14 +685,19 @@ export default function BookCapsule({
               <p className="mt-1 font-semibold text-[#0B3B2A]">
                 {availableCapsules.find(
                   (capsule) =>
-                    capsule.id === selectedCapsule
+                    capsule.id ===
+                    selectedCapsule
                 )?.name ||
                   `Capsule ${selectedCapsule}`}
               </p>
+
             </div>
 
-           
+
+            {/* STATUS */}
+
             <div className="rounded-xl bg-[#F5FAF7] p-4">
+
               <p className="text-xs text-[#7A9185]">
                 Reservation Status
               </p>
@@ -477,40 +705,60 @@ export default function BookCapsule({
               <p className="mt-1 font-semibold text-[#C58A16]">
                 Pending
               </p>
+
             </div>
 
           </div>
 
+
+          {/* REQUEST INFO */}
+
           <div className="mt-5 rounded-xl border border-[#D7E7DE] bg-[#F8FBF9] p-4">
+
             <p className="text-sm font-medium text-[#0B3B2A]">
               Reservation Request
             </p>
 
             <p className="mt-1 text-xs leading-5 text-[#6F8E7F]">
-              Your reservation will be submitted for confirmation.
-              You will receive an update once the reservation status
+              Your reservation will be submitted
+              for confirmation. You will receive
+              an update once the reservation status
               has been processed.
             </p>
+
           </div>
 
-     
+
+          {/* ERROR */}
+
           {error && (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
             </div>
           )}
 
-         
+
+          {/* BUTTONS */}
+
           <div className="mt-6 flex flex-wrap justify-end gap-3">
+
+            {/* BACK */}
 
             <button
               type="button"
-              onClick={() => setStep(1)}
+              onClick={() => {
+                setStep(1);
+                setError("");
+              }}
               className="inline-flex items-center gap-2 rounded-xl border border-[#D7E7DE] px-5 py-3 text-sm font-semibold text-[#4E6B5D] transition hover:bg-[#F5FAF7]"
             >
               <ArrowLeft className="h-4 w-4" />
+
               Back
             </button>
+
+
+            {/* SUBMIT */}
 
             <button
               type="button"
@@ -518,12 +766,14 @@ export default function BookCapsule({
               className="inline-flex items-center gap-2 rounded-xl bg-[#0B4A2E] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#09391F]"
             >
               <CheckCircle2 className="h-4 w-4" />
+
               Submit Reservation
             </button>
 
           </div>
 
         </section>
+
       )}
 
     </div>
