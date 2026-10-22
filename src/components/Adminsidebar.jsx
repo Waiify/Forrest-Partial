@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   LayoutGrid,
   ClipboardList,
@@ -29,7 +30,66 @@ const NAV_ITEMS = [
   },
 ];
 
+// Ngalan nga ipakita para sa matag role
+const ROLE_LABELS = {
+  admin: "Administrator",
+  staff: "Staff",
+  customer: "Customer",
+};
+
+// Basahon ang user nga gi-save sa Login.jsx (sessionStorage "user")
+function readUser() {
+  try {
+    const raw = sessionStorage.getItem("user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function getFullName(user) {
+  if (!user) return "";
+  const direct = user.name || user.fullName || user.displayName;
+  if (direct) return String(direct).trim();
+
+  const names = [user.firstName, user.lastName].filter(Boolean);
+  return names.join(" ").trim();
+}
+
+function getInitials(user) {
+  const name = getFullName(user);
+  if (name) {
+    const parts = name.trim().split(/\s+/);
+    const first = parts[0]?.[0] || "";
+    const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+    return (first + last).toUpperCase() || "?";
+  }
+
+  const email = (user?.email || "").trim();
+  return email ? email[0].toUpperCase() : "?";
+}
+
+function getRoleLabel(user) {
+  const role = String(user?.role || "").toLowerCase();
+  if (!role) return "";
+  return ROLE_LABELS[role] || role.charAt(0).toUpperCase() + role.slice(1);
+}
+
 export default function Sidebar({ active, onNavigate }) {
+  const [user, setUser] = useState(readUser);
+
+  // I-refresh ang user kung mobalik ang focus sa window
+  useEffect(() => {
+    const syncUser = () => setUser(readUser());
+    window.addEventListener("focus", syncUser);
+    return () => window.removeEventListener("focus", syncUser);
+  }, []);
+
+  const displayName = getFullName(user) || "Account";
+  const roleLabel = getRoleLabel(user);
+
   return (
     <aside className="hidden w-[250px] shrink-0 flex-col bg-[#033D22] text-white md:flex">
       <div className="flex items-center gap-3 px-5 py-5">
@@ -69,13 +129,21 @@ export default function Sidebar({ active, onNavigate }) {
         ))}
       </nav>
 
+      {/* Logged-in account info */}
       <div className="m-4 flex items-center gap-3 border-t border-white/20 pt-4">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2F9E7A] text-xs font-bold">
-          RD
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2F9E7A] text-xs font-bold">
+          {getInitials(user)}
         </div>
-        <div className="leading-tight">
-          <p className="text-sm font-semibold">Meme Dealdo</p>
-          <p className="text-xs text-white/60">Administrator</p>
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-sm font-semibold" title={displayName}>
+            {displayName}
+          </p>
+          {roleLabel && <p className="text-xs text-white/60">{roleLabel}</p>}
+          {user?.email && (
+            <p className="truncate text-[11px] text-white/50" title={user.email}>
+              {user.email}
+            </p>
+          )}
         </div>
       </div>
     </aside>

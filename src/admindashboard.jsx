@@ -138,37 +138,40 @@ export default function Dashboard() {
   function handleNavigate(section) {
     if (section === "Customers") return navigate("/customers");
     if (section === "Capsule") return navigate("/capsule");
+    if (section === "Reservation") return navigate("/reservation");
     if (section === "Staff Management" || section === "Management") return navigate("/management");
     navigate("/dashboard");
   }
 
-  // Mokuha sa mga capsule gikan sa database (wala ang archived)
-  async function loadCapsules(showLoading = false) {
-    try {
-      if (showLoading) setLoading(true);
-      const res = await fetch(`${API}/capsules?archived=false`);
-      if (!res.ok) throw new Error("Request failed");
-      const data = await res.json();
-      // I-convert ang database fields ngadto sa gamiton sa page
-      setRooms(
-        data.map((c) => ({
-          id: c.capsuleId,
-          name: c.capsuleName,
-          status: c.status,
-        }))
-      );
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   // Mo-load pag-abli sa page, unya mo-refresh matag 5 segundos
   useEffect(() => {
-    loadCapsules(true);
-    const timer = setInterval(() => loadCapsules(false), 5000);
-    return () => clearInterval(timer); // i-undang ang timer kung mawala ang page
+    let current = true;
+    const loadCapsules = () => {
+      fetch(`${API}/capsules?archived=false`)
+        .then((res) => {
+          if (!res.ok) throw new Error("Request failed");
+          return res.json();
+        })
+        .then((data) => {
+          if (!current) return;
+          setRooms(data.map((c) => ({
+            id: c.capsuleId,
+            name: c.capsuleName,
+            status: c.status,
+          })));
+        })
+        .catch((err) => console.error(err))
+        .finally(() => {
+          if (current) setLoading(false);
+        });
+    };
+
+    loadCapsules();
+    const timer = setInterval(loadCapsules, 5000);
+    return () => {
+      current = false;
+      clearInterval(timer);
+    };
   }, []);
 
   // Ihap gikan sa real data

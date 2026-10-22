@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   User,
   Mail,
@@ -13,22 +13,11 @@ export default function Profile({ user }) {
   const [isSaving, setIsSaving] = useState(false);
 
   const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    username: "",
+    firstName: user?.firstName || "",
+    lastName: user?.lastName || "",
+    email: user?.email || "",
+    username: user?.username || "",
   });
-
-  useEffect(() => {
-    if (user) {
-      setFormData({
-        firstName: user.firstName || "",
-        lastName: user.lastName || "",
-        email: user.email || "",
-        username: user.username || "",
-      });
-    }
-  }, [user]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
