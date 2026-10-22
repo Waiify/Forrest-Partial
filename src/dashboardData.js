@@ -11,6 +11,7 @@ import capsule3 from "./assets/capsules/capsule3.png";
 import capsule4 from "./assets/capsules/capsule4.png";
 import capsule5 from "./assets/capsules/capsule5.png";
 import capsule6 from "./assets/capsules/capsule6.png";
+import capsule7 from "./assets/capsules/capsule7.png";
 
 
 export const CAPSULES = [
@@ -31,14 +32,20 @@ export const CAPSULES = [
   },
   {
     id: "A4",
-    status: "Cleaning",
+    status: "Reserved",
     image: capsule5,
   },
   {
     id: "A5",
-    status: "Cleaning",
+    status: "Under Maintenance",
     image: capsule6,
   },
+  {
+  id: "A6",
+  name: "Capsule A6",
+  status: "Available",
+  image: capsule7,
+},
 ];
 
 /* Upcoming reservation */
@@ -52,7 +59,7 @@ export const UPCOMING = {
   image: capsule1,
 };
 
-/* Reservation history */
+/* para sa reservation history  */
 export const RESERVATIONS = [
   {
     id: 1,
@@ -96,7 +103,7 @@ export const RESERVATIONS = [
   },
 ];
 
-/* Summary cards */
+/* for summary cards ni*/
 export const STATS = [
   {
     label: "Upcoming Reservations",
@@ -123,16 +130,16 @@ export const STATS = [
     go: "Reservation History",
   },
   {
-    label: "Available Capsules",
-    value: 5,
-    note: "Ready for booking",
-    icon: DoorOpen,
-    tint: "bg-[#CFE9DC]",
-    go: "Book a Capsule",
-  },
+  label: "Available Capsules",
+  value: 3,
+  note: "Ready for booking",
+  icon: DoorOpen,
+  tint: "bg-[#CFE9DC]",
+  go: "Book a Capsule",
+},
 ];
 
-/* Read logged-in user saved from login pages */
+
 export function getUser() {
   try {
     return JSON.parse(sessionStorage.getItem("user")) || {};

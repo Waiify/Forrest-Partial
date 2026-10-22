@@ -44,7 +44,7 @@ export default function Notification({
   return (
     <div className="space-y-6">
 
-      {/* Header */}
+      {/* Header gud unsa pa */}
       <div>
         <h2 className="text-2xl font-bold text-[#0B4A2E]">
           Notifications
@@ -56,7 +56,7 @@ export default function Notification({
         </p>
       </div>
 
-      {/* Notifications List */}
+      {/* Notifications List like new something*/}
       <div className="rounded-2xl border border-[#CFE3D9] bg-white shadow-sm">
 
         {notifications.length === 0 ? (
@@ -103,7 +103,7 @@ export default function Notification({
                     <Icon className="h-5 w-5" />
                   </div>
 
-                  {/* Content */}
+                  {/* Content nimo*/}
                   <div className="min-w-0 flex-1">
 
                     <div className="flex items-start justify-between gap-3">

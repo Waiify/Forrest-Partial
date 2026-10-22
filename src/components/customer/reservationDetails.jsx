@@ -30,7 +30,7 @@ export default function ReservationDetails({
     <div className="space-y-4">
 
       {/* =====================================================
-          BACK BUTTON
+          BACK BUTTON PARA MAKA BALIK KA
       ====================================================== */}
       <button
         type="button"
@@ -42,12 +42,12 @@ export default function ReservationDetails({
       </button>
 
       {/* =====================================================
-          RESERVATION DETAILS CARD
+          RESERVATION DETAILS CARD PARA AWARE KA
       ====================================================== */}
       <div className="rounded-2xl bg-white p-6 shadow-sm">
 
         {/* =================================================
-            HEADER
+            HEADER UG STATUS
         ================================================== */}
         <div className="flex flex-col gap-4 border-b border-[#E4EFE9] pb-5 sm:flex-row sm:items-center sm:justify-between">
 
@@ -93,7 +93,7 @@ export default function ReservationDetails({
         </div>
 
         {/* =================================================
-            DATE + TIME
+            DATE UG TIME 
         ================================================== */}
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
 
@@ -139,7 +139,7 @@ export default function ReservationDetails({
         </div>
 
         {/* =================================================
-            ACTIONS
+            ACTIONS NGA PWEDE NIMO MA PERFORM
         ================================================== */}
 
         {reservation.status === "Confirmed" && (

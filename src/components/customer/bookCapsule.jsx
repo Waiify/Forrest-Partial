@@ -15,31 +15,35 @@ export default function BookCapsule({
   onSubmit,
 }) {
   const [selectedDate, setSelectedDate] = useState(
-  bookingSelection?.date
-    ? (() => {
-        const date = new Date(
-          bookingSelection.date
-        );
+    bookingSelection?.date
+      ? (() => {
+          const date = new Date(
+            bookingSelection.date
+          );
 
-        return `${date.getFullYear()}-${String(
-          date.getMonth() + 1
-        ).padStart(2, "0")}-${String(
-          date.getDate()
-        ).padStart(2, "0")}`;
-      })()
-    : ""
-);
+          return `${date.getFullYear()}-${String(
+            date.getMonth() + 1
+          ).padStart(2, "0")}-${String(
+            date.getDate()
+          ).padStart(2, "0")}`;
+        })()
+      : ""
+  );
 
   const [startTime, setStartTime] = useState(() => {
     if (!bookingSelection?.time) return "";
 
-    return bookingSelection.time.split(" - ")[0] || "";
+    return (
+      bookingSelection.time.split(" - ")[0] || ""
+    );
   });
 
   const [endTime, setEndTime] = useState(() => {
     if (!bookingSelection?.time) return "";
 
-    return bookingSelection.time.split(" - ")[1] || "";
+    return (
+      bookingSelection.time.split(" - ")[1] || ""
+    );
   });
 
   const [selectedCapsule, setSelectedCapsule] =
@@ -50,30 +54,31 @@ export default function BookCapsule({
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
 
- /* =====================================================
-   PREFILL FROM CAPSULE AVAILABILITY
-====================================================== */
+  /* =====================================================
+     PREFILL FROM CAPSULE AVAILABILITY
+  ====================================================== */
 
-useEffect(() => {
-  if (!bookingSelection) return;
+  useEffect(() => {
+    if (!bookingSelection) return;
 
-  /* Date */
-  if (bookingSelection.date) {
-    const date =
-      bookingSelection.date instanceof Date
-        ? bookingSelection.date
-        : new Date(bookingSelection.date);
+    /* DATE */
+    if (bookingSelection.date) {
+      const date =
+        bookingSelection.date instanceof Date
+          ? bookingSelection.date
+          : new Date(bookingSelection.date);
 
-    const localDate =
-      `${date.getFullYear()}-${String(
-        date.getMonth() + 1
-      ).padStart(2, "0")}-${String(
-        date.getDate()
-      ).padStart(2, "0")}`;
+      const localDate =
+        `${date.getFullYear()}-${String(
+          date.getMonth() + 1
+        ).padStart(2, "0")}-${String(
+          date.getDate()
+        ).padStart(2, "0")}`;
 
-    setSelectedDate(localDate);
-  }
-    /* Time */
+      setSelectedDate(localDate);
+    }
+
+    /* TIME */
     if (bookingSelection.time) {
       const [start, end] =
         bookingSelection.time.split(" - ");
@@ -82,7 +87,7 @@ useEffect(() => {
       setEndTime(end || "");
     }
 
-    /* Capsule */
+    /* CAPSULE */
     if (bookingSelection.capsule?.id) {
       setSelectedCapsule(
         bookingSelection.capsule.id
@@ -92,7 +97,6 @@ useEffect(() => {
     setStep(1);
     setError("");
   }, [bookingSelection]);
-
 
   /* =====================================================
      AVAILABLE CAPSULES
@@ -106,20 +110,101 @@ useEffect(() => {
     );
   }, [capsules]);
 
+  /* =====================================================
+     ALL CAPSULES
+     Used for displaying status cards.
+  ====================================================== */
+
+  const displayedCapsules = useMemo(() => {
+    return capsules;
+  }, [capsules]);
+
+  /* =====================================================
+     STATUS HELPERS
+  ====================================================== */
+
+  const getCapsuleStatus = (capsule) => {
+    const status =
+      capsule.status?.toLowerCase() || "available";
+
+    switch (status) {
+      case "available":
+        return {
+          label: "Available",
+          icon: CheckCircle2,
+          container:
+            "bg-white text-[#287A4B]",
+          iconClass:
+            "text-[#287A4B]",
+          badge:
+            "bg-[#EAF4EE] text-[#287A4B]",
+        };
+
+      case "reserved":
+        return {
+          label: "Reserved",
+          icon: Clock3,
+          container:
+            "bg-white text-[#2563EB]",
+          iconClass:
+            "text-[#2563EB]",
+          badge:
+            "bg-blue-50 text-blue-600",
+        };
+
+      case "occupied":
+        return {
+          label: "Occupied",
+          icon: Clock3,
+          container:
+            "bg-white text-[#DC2626]",
+          iconClass:
+            "text-[#DC2626]",
+          badge:
+            "bg-red-50 text-red-600",
+        };
+
+      case "maintenance":
+      case "under maintenance":
+      case "cleaning":
+        return {
+          label: "Under Maintenance",
+          icon: Clock3,
+          container:
+            "bg-white text-[#C58A16]",
+          iconClass:
+            "text-[#C58A16]",
+          badge:
+            "bg-yellow-50 text-yellow-700",
+        };
+
+      default:
+        return {
+          label: capsule.status || "Unavailable",
+          icon: Clock3,
+          container:
+            "bg-white text-[#6F8E7F]",
+          iconClass:
+            "text-[#6F8E7F]",
+          badge:
+            "bg-gray-100 text-gray-600",
+        };
+    }
+  };
 
   /* =====================================================
      TODAY
   ====================================================== */
 
   const today = (() => {
-  const date = new Date();
+    const date = new Date();
 
-  return `${date.getFullYear()}-${String(
-    date.getMonth() + 1
-  ).padStart(2, "0")}-${String(
-    date.getDate()
-  ).padStart(2, "0")}`;
-})();
+    return `${date.getFullYear()}-${String(
+      date.getMonth() + 1
+    ).padStart(2, "0")}-${String(
+      date.getDate()
+    ).padStart(2, "0")}`;
+  })();
 
   /* =====================================================
      VALIDATION
@@ -147,7 +232,23 @@ useEffect(() => {
 
     if (!selectedCapsule) {
       setError(
-        "Please select a capsule."
+        "Please select an available capsule."
+      );
+      return false;
+    }
+
+    const selected =
+      displayedCapsules.find(
+        (capsule) =>
+          capsule.id === selectedCapsule
+      );
+
+    if (
+      selected?.status?.toLowerCase() !==
+      "available"
+    ) {
+      setError(
+        "Please select a capsule that is currently available."
       );
       return false;
     }
@@ -163,7 +264,6 @@ useEffect(() => {
     return true;
   };
 
-
   /* =====================================================
      CONTINUE TO CONFIRMATION
   ====================================================== */
@@ -173,7 +273,6 @@ useEffect(() => {
 
     setStep(2);
   };
-
 
   /* =====================================================
      SUBMIT RESERVATION
@@ -201,7 +300,6 @@ useEffect(() => {
 
     onSubmit?.(reservation);
   };
-
 
   /* =====================================================
      RETURN
@@ -233,7 +331,6 @@ useEffect(() => {
 
       </div>
 
-
       {/* =================================================
           PROGRESS
       ================================================== */}
@@ -255,6 +352,7 @@ useEffect(() => {
           </div>
 
           <div className="flex-1">
+
             <p className="text-sm font-semibold text-[#0B3B2A]">
               Select Reservation
             </p>
@@ -262,10 +360,10 @@ useEffect(() => {
             <p className="text-xs text-[#7A9185]">
               Choose your date, time, and capsule.
             </p>
+
           </div>
 
           <div className="h-px w-10 bg-[#D7E7DE]" />
-
 
           {/* STEP 2 */}
 
@@ -280,6 +378,7 @@ useEffect(() => {
           </div>
 
           <div>
+
             <p className="text-sm font-semibold text-[#0B3B2A]">
               Confirm
             </p>
@@ -287,11 +386,12 @@ useEffect(() => {
             <p className="text-xs text-[#7A9185]">
               Review your reservation.
             </p>
+
           </div>
 
         </div>
-      </div>
 
+      </div>
 
       {/* =================================================
           STEP 1
@@ -299,6 +399,7 @@ useEffect(() => {
 
       {step === 1 && (
         <>
+
           {/* DATE + TIME */}
 
           <div className="grid gap-5 lg:grid-cols-2">
@@ -314,6 +415,7 @@ useEffect(() => {
                 </div>
 
                 <div>
+
                   <h3 className="font-semibold text-[#0B3B2A]">
                     Select Date
                   </h3>
@@ -321,6 +423,7 @@ useEffect(() => {
                   <p className="text-xs text-[#7A9185]">
                     When would you like to use the capsule?
                   </p>
+
                 </div>
 
               </div>
@@ -340,7 +443,6 @@ useEffect(() => {
 
             </section>
 
-
             {/* TIME */}
 
             <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -352,6 +454,7 @@ useEffect(() => {
                 </div>
 
                 <div>
+
                   <h3 className="font-semibold text-[#0B3B2A]">
                     Select Time
                   </h3>
@@ -359,10 +462,10 @@ useEffect(() => {
                   <p className="text-xs text-[#7A9185]">
                     Choose your check-in and check-out time.
                   </p>
+
                 </div>
 
               </div>
-
 
               <div className="grid grid-cols-2 gap-3">
 
@@ -387,7 +490,6 @@ useEffect(() => {
                   />
 
                 </div>
-
 
                 {/* CHECK-OUT */}
 
@@ -417,9 +519,8 @@ useEffect(() => {
 
           </div>
 
-
           {/* =================================================
-              AVAILABLE CAPSULES
+              CAPSULE STATUS
           ================================================== */}
 
           <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -439,13 +540,12 @@ useEffect(() => {
                   </h3>
 
                   <p className="text-xs text-[#7A9185]">
-                    Select one capsule for your reservation.
+                    Select an available capsule for your reservation.
                   </p>
 
                 </div>
 
               </div>
-
 
               <span className="rounded-full bg-[#EAF4EE] px-3 py-1 text-xs font-semibold text-[#287A4B]">
                 {availableCapsules.length} available
@@ -453,38 +553,60 @@ useEffect(() => {
 
             </div>
 
+            {displayedCapsules.length > 0 ? (
 
-            {availableCapsules.length > 0 ? (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-
-                {availableCapsules.map(
+                {displayedCapsules.map(
                   (capsule) => {
+
+                    const status =
+                      getCapsuleStatus(
+                        capsule
+                      );
+
+                    const StatusIcon =
+                      status.icon;
+
+                    const isAvailable =
+                      capsule.status
+                        ?.toLowerCase() ===
+                      "available";
 
                     const isSelected =
                       selectedCapsule ===
                       capsule.id;
 
                     return (
+
                       <button
                         key={capsule.id}
                         type="button"
+                        disabled={!isAvailable}
                         onClick={() => {
+
+                          if (!isAvailable)
+                            return;
+
                           setSelectedCapsule(
                             capsule.id
                           );
+
                           setError("");
                         }}
+
                         className={`group overflow-hidden rounded-xl border text-left transition ${
                           isSelected
                             ? "border-[#0B4A2E] bg-[#F0F8F3] ring-2 ring-[#0B4A2E]/10"
-                            : "border-[#DDEAE3] bg-[#F8FBF9] hover:border-[#B8D7C8] hover:shadow-sm"
+                            : isAvailable
+                              ? "border-[#DDEAE3] bg-[#F8FBF9] hover:border-[#B8D7C8] hover:shadow-sm"
+                              : "cursor-not-allowed border-[#E2E8E5] bg-[#F5F7F6] opacity-80"
                         }`}
                       >
 
                         {/* IMAGE */}
 
-                        <div className="relative h-45 overflow-hidden bg-[#DDEDE5]">
+                        <div className="relative h-48 overflow-hidden bg-[#DDEDE5]">
 
                           {capsule.image ? (
 
@@ -496,7 +618,11 @@ useEffect(() => {
                                 capsule.name ||
                                 `Capsule ${capsule.id}`
                               }
-                              className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                              className={`h-full w-full object-cover transition duration-300 ${
+                                isAvailable
+                                  ? "group-hover:scale-105"
+                                  : "grayscale-[20%]"
+                              }`}
                             />
 
                           ) : (
@@ -509,17 +635,21 @@ useEffect(() => {
 
                           )}
 
+                          {/* STATUS BADGE */}
 
-                          <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-[#287A4B] shadow-sm">
+                          <div
+                            className={`absolute left-3 top-3 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold shadow-sm ${status.badge}`}
+                          >
 
-                            <CheckCircle2 className="h-3 w-3" />
+                            <StatusIcon
+                              className={`h-3 w-3 ${status.iconClass}`}
+                            />
 
-                            Available
+                            {status.label}
 
                           </div>
 
                         </div>
-
 
                         {/* CAPSULE INFO */}
 
@@ -538,26 +668,39 @@ useEffect(() => {
 
                           </div>
 
-
                           <p className="mt-1 text-xs text-[#6F8E7F]">
-                            Ready for booking
+
+                            {isAvailable
+                              ? "Ready for booking"
+                              : status.label ===
+                                "Reserved"
+                                ? "Already reserved for this schedule"
+                                : status.label ===
+                                  "Occupied"
+                                  ? "Currently occupied"
+                                  : "Currently unavailable"}
+
                           </p>
 
-
                           {capsule.price && (
+
                             <p className="mt-2 text-xs font-semibold text-[#0B4A2E]">
+
                               ₱{capsule.price}
 
                               <span className="font-normal text-[#7A9185]">
                                 {" "}
                                 / hour
                               </span>
+
                             </p>
+
                           )}
 
                         </div>
 
                       </button>
+
                     );
                   }
                 )}
@@ -569,9 +712,7 @@ useEffect(() => {
               <div className="rounded-xl border border-dashed border-[#D7E7DE] bg-[#F8FBF9] px-6 py-12 text-center">
 
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#E5F2EB]">
-
                   <BedSingle className="h-6 w-6 text-[#4D8067]" />
-
                 </div>
 
                 <p className="mt-3 font-semibold text-[#0B3B2A]">
@@ -588,6 +729,35 @@ useEffect(() => {
 
           </section>
 
+          {/* STATUS LEGEND */}
+
+          <section className="rounded-2xl border border-[#D7E7DE] bg-[#F8FBF9] p-4">
+
+            <p className="mb-3 text-xs font-semibold text-[#0B3B2A]">
+              Capsule Status
+            </p>
+
+            <div className="flex flex-wrap gap-3">
+
+              <span className="rounded-full bg-[#EAF4EE] px-3 py-1 text-xs font-semibold text-[#287A4B]">
+                🟢 Available
+              </span>
+
+              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
+                🔵 Reserved
+              </span>
+
+              <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-600">
+                🔴 Occupied
+              </span>
+
+              <span className="rounded-full bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700">
+                🟠 Under Maintenance
+              </span>
+
+            </div>
+
+          </section>
 
           {/* ERROR */}
 
@@ -596,7 +766,6 @@ useEffect(() => {
               {error}
             </div>
           )}
-
 
           {/* CONTINUE */}
 
@@ -618,7 +787,6 @@ useEffect(() => {
         </>
       )}
 
-
       {/* =================================================
           STEP 2
       ================================================== */}
@@ -639,7 +807,6 @@ useEffect(() => {
 
           </div>
 
-
           {/* RESERVATION DETAILS */}
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -658,7 +825,6 @@ useEffect(() => {
 
             </div>
 
-
             {/* TIME */}
 
             <div className="rounded-xl bg-[#F5FAF7] p-4">
@@ -673,7 +839,6 @@ useEffect(() => {
 
             </div>
 
-
             {/* CAPSULE */}
 
             <div className="rounded-xl bg-[#F5FAF7] p-4">
@@ -683,16 +848,17 @@ useEffect(() => {
               </p>
 
               <p className="mt-1 font-semibold text-[#0B3B2A]">
-                {availableCapsules.find(
+
+                {displayedCapsules.find(
                   (capsule) =>
                     capsule.id ===
                     selectedCapsule
                 )?.name ||
                   `Capsule ${selectedCapsule}`}
+
               </p>
 
             </div>
-
 
             {/* STATUS */}
 
@@ -709,7 +875,6 @@ useEffect(() => {
             </div>
 
           </div>
-
 
           {/* REQUEST INFO */}
 
@@ -728,7 +893,6 @@ useEffect(() => {
 
           </div>
 
-
           {/* ERROR */}
 
           {error && (
@@ -736,7 +900,6 @@ useEffect(() => {
               {error}
             </div>
           )}
-
 
           {/* BUTTONS */}
 
@@ -756,7 +919,6 @@ useEffect(() => {
 
               Back
             </button>
-
 
             {/* SUBMIT */}
 

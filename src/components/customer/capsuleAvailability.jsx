@@ -13,7 +13,7 @@ import { CAPSULES } from "../../dashboardData.js";
 
 export default function CapsuleAvailability({ onBook }) {
   /* =====================================================
-     DATE / CALENDAR STATES
+     DATE AND CALENDAR STATES
   ====================================================== */
 
   const today = new Date();
@@ -32,7 +32,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     TIME SLOTS
+     TIME SLOTS PINAKA-IMPORTANTE to see availability
   ====================================================== */
 
   const timeSlots = [
@@ -60,7 +60,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     MOCK BOOKED SLOTS
+     MOCK BOOKED SLOTS PANI FOR NOW
   ====================================================== */
 
   const bookedSlots = {
@@ -94,7 +94,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     AVAILABLE CAPSULES
+     AVAILABLE CAPSULES DAYON
   ====================================================== */
 
   const availableCapsules = useMemo(() => {
@@ -106,9 +106,6 @@ export default function CapsuleAvailability({ onBook }) {
   }, []);
 
 
-  /* =====================================================
-     DATE HELPERS
-  ====================================================== */
 
   const formatDateKey = (date) => {
     const year = date.getFullYear();
@@ -155,7 +152,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     CALENDAR DAYS
+     CALENDAR DAYS MWEHEHE
   ====================================================== */
 
   const calendarDays = useMemo(() => {
@@ -185,7 +182,7 @@ export default function CapsuleAvailability({ onBook }) {
 
     const days = [];
 
-    /* Empty spaces before first day */
+    /* Empty spaces before first day para dili maka select ug date nga humana*/
 
     for (
       let i = 0;
@@ -212,7 +209,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     MONTH NAVIGATION
+     MONTH NAVIGATION PARA MAKA USAD KA
   ====================================================== */
 
   const previousMonth = () => {
@@ -250,7 +247,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     DATE AVAILABILITY STATUS
+     DATE AVAILABILITY STATUS DAYON DRI
   ====================================================== */
 
   const getDateStatus = (date) => {
@@ -297,7 +294,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     SELECTED DATE INFORMATION
+     SELECTED DATE INFORMATION PARA AWARE KA!
   ====================================================== */
 
   const selectedDateKey =
@@ -312,7 +309,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     CHECK IF TIME SLOT IS BOOKED
+     CHECK IF TIME SLOT IS BOOKED PARA DI NAKA MO SUGAL
   ====================================================== */
 
   const isSlotBooked = (
@@ -328,7 +325,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     BOOK HANDLER
+     BOOK HANDLER 
   ====================================================== */
 
   const handleBook = (
@@ -588,7 +585,7 @@ export default function CapsuleAvailability({ onBook }) {
         </div>
 
 
-        {/* Legend */}
+  
 
         <div className="mt-5 flex flex-wrap gap-4 border-t border-[#EEF3F0] pt-4">
 
@@ -633,7 +630,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
       {/* =================================================
-          SELECTED DATE + TIME SLOTS
+          SELECTED DATE AND TIME SLOTS
       ================================================== */}
 
       {selectedDate && (

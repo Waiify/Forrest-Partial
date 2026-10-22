@@ -50,8 +50,7 @@ export default function CustomerDashboard() {
     useState("My Reservation");
 
   /*
-    Keep reservations in state so newly submitted
-    reservations immediately appear in the dashboard.
+    Keep reservations in state para ang newly submitted nga reservations kay mo appear ditso sa dashboard.
   */
   const [reservationList, setReservationList] =
     useState(RESERVATIONS);
@@ -77,7 +76,7 @@ const [rescheduleEndTime, setRescheduleEndTime] =
 
 
   /* =====================================================
-      SEARCH
+      SEARCH BAR
   ====================================================== */
 
   const filteredReservations = reservationList.filter((r) =>
@@ -88,9 +87,7 @@ const [rescheduleEndTime, setRescheduleEndTime] =
 
 
   /* =====================================================
-      CURRENT RESERVATIONS
-
-      These belong in "My Reservation"
+      CURRENT RESERVATIONS "My Reservation" NGA PART
   ====================================================== */
 
   const reservations = filteredReservations.filter((r) =>
@@ -99,9 +96,7 @@ const [rescheduleEndTime, setRescheduleEndTime] =
 
 
   /* =====================================================
-      RESERVATION HISTORY
-
-      These belong in "History"
+      RESERVATION HISTORY belong sa "History"
   ====================================================== */
 
   const historyReservations = filteredReservations.filter((r) =>
@@ -142,10 +137,7 @@ const [rescheduleEndTime, setRescheduleEndTime] =
 
 
   /* =====================================================
-      UPCOMING RESERVATION
-
-      Get the first Pending or Confirmed reservation
-      instead of always using the static A3.
+      UPCOMING RESERVATION para ma display sa dashboard if naay mo book
   ====================================================== */
 const upcomingReservation = (() => {
   const reservation = reservationList.find(
@@ -596,11 +588,7 @@ const handleSaveReschedule = () => {
                     }}
 
                     onViewAll={() => {
-                      /*
-                        For now this opens booking.
-                        Later we can change this to
-                        Capsule Availability.
-                      */
+                      
                       setActive("Book a Capsule");
                     }}
                   />
@@ -816,13 +804,6 @@ const handleSaveReschedule = () => {
         reservation
       );
 
-      /*
-        Create a new reservation ID.
-        The reservation returned from
-        BookCapsule should already contain
-        status: "Pending".
-      */
-
       const newReservation = {
         ...reservation,
         id: Date.now(),
@@ -847,10 +828,6 @@ setNotifications((prev) => [
 ]);
 
 
-      /*
-        Add newest reservation
-        to the beginning of the list.
-      */
 
       setReservationList((prev) => [
         newReservation,
@@ -858,9 +835,6 @@ setNotifications((prev) => [
       ]);
 
 
-      /*
-        Record reservation activity.
-      */
 
       const activity = {
         action: "Reservation Submitted",
@@ -875,12 +849,6 @@ setNotifications((prev) => [
           activity,
         ],
       }));
-
-
-      /*
-        Open the new reservation
-        immediately.
-      */
 
       setSelectedReservation(
         newReservation

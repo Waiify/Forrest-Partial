@@ -57,7 +57,7 @@ function SpaceCard({ space, onViewAvailability }) {
   return (
     <div className="group overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-md">
 
-      {/* Image */}
+      {/* for image  */}
       <div className="relative h-48 overflow-hidden bg-gray-100">
         <img
           src={space.image}
@@ -65,27 +65,25 @@ function SpaceCard({ space, onViewAvailability }) {
           className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
         />
 
-        {/* Status */}
+        {/* sa status */}
         <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           {space.status}
         </div>
       </div>
 
-      {/* Content */}
+     
       <div className="p-4">
 
-        {/* Title */}
         <h3 className="text-base font-bold text-[#0B3B2A]">
           {space.name}
         </h3>
 
-        {/* Description */}
         <p className="mt-2 min-h-[40px] text-xs leading-5 text-gray-500">
           {space.description}
         </p>
 
-        {/* Features */}
+    
         <div className="mt-4 flex min-h-[48px] flex-wrap gap-1.5">
           {space.features.map((feature) => {
             const Icon = feature.icon;
@@ -102,7 +100,7 @@ function SpaceCard({ space, onViewAvailability }) {
           })}
         </div>
 
-        {/* Button */}
+        {/* View Availability button haha unsa pa */}
         <button
   type="button"
   onClick={() => onViewAvailability(space.name)}
@@ -121,7 +119,7 @@ export default function AvailableSpaces({ onViewAvailability }) {
   return (
     <div className="rounded-2xl bg-white p-6 shadow-sm">
 
-      {/* Header */}
+      {/* Header of course */}
       <div className="mb-7">
         <p className="text-sm font-semibold text-[#0A5A35]">
           Services Offered
@@ -138,7 +136,7 @@ export default function AvailableSpaces({ onViewAvailability }) {
         </p>
       </div>
 
-      {/* Space Cards */}
+      {/* Space Cards Dri */}
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {spaces.map((space) => (
           <SpaceCard
