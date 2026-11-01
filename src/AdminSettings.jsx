@@ -42,11 +42,6 @@ const GROUPS = [
         confirmOff:
           "With email off, customers can't receive password reset codes. Turn it off anyway?",
       },
-      {
-        key: "smsEnabled",
-        label: "SMS",
-        description: "Send text message notifications.",
-      },
     ],
   },
 ];
@@ -108,6 +103,9 @@ export default function AdminSettings() {
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [savingKey, setSavingKey] = useState("");
+  const [pendingToggle, setPendingToggle] = useState(null);
+  const [adminCode, setAdminCode] = useState("");
+  const [codeError, setCodeError] = useState("");
 
   function handleNavigate(section) {
     if (section === "Customers") return navigate("/customers");
@@ -148,24 +146,36 @@ export default function AdminSettings() {
     };
   }, []);
 
-  // Saves one toggle right away. The switch only changes after the server confirms.
-  async function toggle(item) {
+  function requestToggle(item) {
     const next = !settings[item.key];
     if (!next && item.confirmOff && !window.confirm(item.confirmOff)) return;
 
     setActionError("");
+    setCodeError("");
+    setAdminCode("");
+    setPendingToggle({ item, next });
+  }
+
+  // The server verifies the admin code before saving the setting.
+  async function confirmToggle(event) {
+    event.preventDefault();
+    if (!pendingToggle) return;
+
+    const { item, next } = pendingToggle;
     setSavingKey(item.key);
     try {
       const updated = await readResponse(
         await fetch(`${API}/settings`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", ...authHeaders() },
-          body: JSON.stringify({ [item.key]: next }),
+          body: JSON.stringify({ [item.key]: next, adminCode }),
         })
       );
       setSettings(updated);
+      setPendingToggle(null);
+      setAdminCode("");
     } catch (err) {
-      setActionError(err.message || "Could not save the setting.");
+      setCodeError(err.message || "Could not save the setting.");
     } finally {
       setSavingKey("");
     }
@@ -181,7 +191,7 @@ export default function AdminSettings() {
             <div>
               <h2 className="text-xl font-bold tracking-tight text-[#0B3B2A]">Settings</h2>
               <p className="mt-1 text-sm text-[#6F8E7F]">
-                Turn sign-in, security, and notification services on or off. Changes save right away.
+                Turn on or off services.
               </p>
             </div>
 
@@ -234,7 +244,7 @@ export default function AdminSettings() {
                               checked={on}
                               disabled={savingKey !== ""}
                               label={`${item.label} ${on ? "on" : "off"}`}
-                              onChange={() => toggle(item)}
+                              onChange={() => requestToggle(item)}
                             />
                           </div>
                         </li>
@@ -247,6 +257,67 @@ export default function AdminSettings() {
           </div>
         </main>
       </div>
+      {pendingToggle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#04281A]/50 p-4 backdrop-blur-[2px]">
+          <form
+            onSubmit={confirmToggle}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-code-title"
+            className="w-full max-w-md rounded-2xl bg-white shadow-2xl"
+          >
+            <div className="border-b border-[#DCEBE3] px-6 py-5">
+              <h2 id="admin-code-title" className="text-lg font-semibold text-[#0B3B2A]">
+                Confirm settings change
+              </h2>
+              <p className="mt-1 text-sm text-[#5F7F70]">
+                Enter your admin code to turn {pendingToggle.item.label} {pendingToggle.next ? "on" : "off"}.
+              </p>
+            </div>
+            <div className="space-y-3 px-6 py-5">
+              <label htmlFor="settings-admin-code" className="block text-sm font-medium text-[#0B3B2A]">
+                Admin code
+              </label>
+              <input
+                id="settings-admin-code"
+                type="password"
+                autoComplete="current-password"
+                value={adminCode}
+                onChange={(event) => setAdminCode(event.target.value)}
+                required
+                autoFocus
+                className="h-10 w-full rounded-lg border border-[#CFE3D9] bg-white px-3 text-sm text-[#0B3B2A] outline-none focus:border-[#2F9E7A] focus:ring-2 focus:ring-[#2F9E7A]/25"
+              />
+              {codeError && (
+                <p className="text-sm text-red-700" role="alert">
+                  {codeError}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-[#DCEBE3] px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingToggle(null);
+                  setAdminCode("");
+                  setCodeError("");
+                }}
+                disabled={savingKey !== ""}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-[#5F7F70] hover:bg-[#F3F9F5] disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingKey !== "" || !adminCode}
+                className="rounded-lg bg-[#2F9E7A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a8f6f] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingKey ? "Verifying..." : "Confirm"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

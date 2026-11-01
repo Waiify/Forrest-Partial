@@ -86,7 +86,9 @@ export default function UpcomingReservation({
                 {reservation.capsule}
               </span>
 
-              <StatusBadge status={reservation.status} />
+              <StatusBadge
+                status={reservation.status}
+              />
             </div>
 
             {/* Date sa Check-in / Check-out */}
@@ -116,9 +118,10 @@ export default function UpcomingReservation({
             {/* Buttons */}
             <div className="mt-3 flex flex-wrap gap-2">
 
+              {/* VIEW DETAILS */}
               <button
                 type="button"
-                onClick={onView}
+                onClick={() => onView(reservation)}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#0B4A2E] px-4 py-2 text-xs font-medium text-white transition hover:bg-[#09391F]"
               >
                 View details
@@ -126,15 +129,19 @@ export default function UpcomingReservation({
                 <ArrowRight className="h-3.5 w-3.5" />
               </button>
 
-              <button
-                type="button"
-                onClick={onCancel}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#E9A8A8] px-4 py-2 text-xs font-medium text-[#C0392B] transition hover:bg-[#FDF1F1]"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
+              {/* CANCEL RESERVATION */}
+              {(reservation.status === "Pending" ||
+                reservation.status === "Confirmed") && (
+                <button
+                  type="button"
+                  onClick={() => onCancel(reservation)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#E9A8A8] px-4 py-2 text-xs font-medium text-[#C0392B] transition hover:bg-[#FDF1F1]"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
 
-                Cancel reservation
-              </button>
+                  Cancel reservation
+                </button>
+              )}
 
             </div>
           </div>

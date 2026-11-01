@@ -46,9 +46,7 @@ export default function Notification({
 
       {/* Header gud unsa pa */}
       <div>
-        <h2 className="text-2xl font-bold text-[#0B4A2E]">
-          Notifications
-        </h2>
+       
 
         <p className="mt-1 text-sm text-[#6F8E7F]">
           Stay updated with your reservation status and

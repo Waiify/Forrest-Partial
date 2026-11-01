@@ -9,7 +9,7 @@ const DEFAULTS = {
   googleAuthEnabled: true,
   recaptchaEnabled: true,
   emailEnabled: true,
-  smsEnabled: true,
+
 };
 
 // Reads the admin's on/off settings from the server.

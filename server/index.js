@@ -270,6 +270,44 @@ app.get('/api/reservations', async (req, res) => {
   }
 });
 
+// GET: one customer's own reservations (customer "My Reservations" page)
+// Usage: /api/reservations/mine?customerId=<user id>
+app.get('/api/reservations/mine', async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    if (!mongoose.Types.ObjectId.isValid(customerId)) {
+      return res.status(400).json({ message: 'A valid customerId is required' });
+    }
+    const reservations = await Reservation.find({ customerId }).sort({ startAt: 1 }).lean();
+    res.json(reservations);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Could not load your reservations' });
+  }
+});
+
+// GET: which capsules are booked and when (customer "Capsule Availability" page)
+// Public on purpose, so it returns no customer details, only the capsule and the time range.
+// Usage: /api/availability?from=<ISO date>&to=<ISO date>
+app.get('/api/availability', async (req, res) => {
+  try {
+    const from = new Date(req.query.from);
+    const to = new Date(req.query.to);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      return res.status(400).json({ message: 'from and to must be valid dates' });
+    }
+    const bookings = await Reservation.find({
+      status: { $in: ['Pending', 'Confirmed', 'Checked in'] },
+      startAt: { $lt: to },
+      endAt: { $gt: from },
+    }).select('capsuleId startAt endAt -_id').lean();
+    res.json(bookings);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Could not load availability' });
+  }
+});
+
 app.post('/api/reservations', async (req, res) => {
   try {
     const { customerId, capsuleId, startAt, durationHours, status } = req.body;
@@ -329,31 +367,73 @@ app.post('/api/reservations', async (req, res) => {
   }
 });
 
+// PATCH: change a reservation's status and/or reschedule it (new startAt and/or durationHours)
 app.patch('/api/reservations/:id', async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, startAt, durationHours } = req.body;
     const allowedStatuses = ['Pending', 'Confirmed', 'Checked in', 'Completed', 'Cancelled'];
-    if (!allowedStatuses.includes(status)) {
+    const activeStatuses = ['Pending', 'Confirmed', 'Checked in'];
+    const rescheduling = startAt !== undefined || durationHours !== undefined;
+
+    if (status !== undefined && !allowedStatuses.includes(status)) {
       return res.status(400).json({ message: 'Invalid reservation status' });
+    }
+    if (status === undefined && !rescheduling) {
+      return res.status(400).json({ message: 'Nothing to update' });
     }
 
     const reservation = await Reservation.findById(req.params.id);
     if (!reservation) return res.status(404).json({ message: 'Reservation not found' });
 
-    if (['Pending', 'Confirmed', 'Checked in'].includes(status)) {
+    const nextStatus = status ?? reservation.status;
+    let nextStart = reservation.startAt;
+    let nextEnd = reservation.endAt;
+    let nextHours = reservation.durationHours;
+
+    if (rescheduling) {
+      if (!['Pending', 'Confirmed'].includes(reservation.status)) {
+        return res.status(409).json({ message: 'Only pending or confirmed reservations can be rescheduled.' });
+      }
+
+      nextStart = startAt !== undefined ? new Date(startAt) : reservation.startAt;
+      nextHours = durationHours !== undefined ? Number(durationHours) : reservation.durationHours;
+
+      if (
+        Number.isNaN(nextStart.getTime()) ||
+        !Number.isFinite(nextHours) ||
+        nextHours < 0.5 ||
+        nextHours > 24
+      ) {
+        return res.status(400).json({ message: 'Enter a valid start time and a duration from 0.5 to 24 hours.' });
+      }
+      if (nextStart < new Date()) {
+        return res.status(400).json({ message: "The new start time can't be in the past." });
+      }
+
+      nextEnd = new Date(nextStart.getTime() + nextHours * 60 * 60 * 1000);
+    }
+
+    // The capsule must be free during the (new) time
+    if (activeStatuses.includes(nextStatus)) {
       const conflict = await Reservation.exists({
         _id: { $ne: reservation._id },
         capsuleId: reservation.capsuleId,
         status: { $nin: ['Cancelled', 'Completed'] },
-        startAt: { $lt: reservation.endAt },
-        endAt: { $gt: reservation.startAt },
+        startAt: { $lt: nextEnd },
+        endAt: { $gt: nextStart },
       });
       if (conflict) {
         return res.status(409).json({ message: 'This capsule already has a reservation during that time.' });
       }
     }
 
-    reservation.status = status;
+    reservation.status = nextStatus;
+    if (rescheduling) {
+      reservation.startAt = nextStart;
+      reservation.endAt = nextEnd;
+      reservation.durationHours = nextHours;
+      reservation.totalPrice = Number((reservation.pricePerHour * nextHours).toFixed(2));
+    }
     await reservation.save();
     res.json(reservation);
   } catch (err) {
@@ -443,6 +523,21 @@ app.get('/api/settings', async (req, res) => {
 // PATCH: admin only
 app.patch('/api/settings', requireAdmin, async (req, res) => {
   try {
+    const expectedCode = process.env.ADMIN_CODE;
+    if (!expectedCode) {
+      return res.status(500).json({ message: 'Admin code verification is not configured' });
+    }
+    const providedCode = typeof req.body.adminCode === 'string'
+      ? Buffer.from(req.body.adminCode)
+      : Buffer.alloc(0);
+    const expectedCodeBuffer = Buffer.from(expectedCode);
+    if (
+      providedCode.length !== expectedCodeBuffer.length ||
+      !crypto.timingSafeEqual(providedCode, expectedCodeBuffer)
+    ) {
+      return res.status(401).json({ message: 'Invalid admin code' });
+    }
+
     const update = {};
     for (const key of SETTING_KEYS) {
       if (req.body[key] === undefined) continue;

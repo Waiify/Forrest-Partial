@@ -48,7 +48,6 @@ export default function MyReservations({
 
           {reservations.map((reservation) => {
 
-            // Find capsule information from CAPSULES
             const capsule = CAPSULES.find(
               (c) => c.id === reservation.capsule
             );
@@ -86,7 +85,6 @@ export default function MyReservations({
                     {/* Reservation Information */}
                     <div className="min-w-0">
 
-                      {/* Capsule + Status */}
                       <div className="flex flex-wrap items-center gap-2">
 
                         <h3 className="font-bold text-[#0B3B2A]">
@@ -99,17 +97,13 @@ export default function MyReservations({
 
                       </div>
 
-                      {/* Date + Time */}
                       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[#6F8E7F]">
 
-                        {/* Date */}
                         <span className="flex items-center gap-1">
                           <CalendarDays className="h-3.5 w-3.5" />
-
                           {reservation.date}
                         </span>
 
-                        {/* Time */}
                         <span className="flex items-center gap-1">
                           <Clock className="h-3.5 w-3.5" />
 
@@ -138,16 +132,14 @@ export default function MyReservations({
                     </button>
 
                     {/* =================================================
-                        CONFIRMED RESERVATION ACTIONS
+                        CONFIRMED ACTIONS
                     ================================================== */}
                     {reservation.status === "Confirmed" && (
                       <>
                         {/* RESCHEDULE */}
                         <button
                           type="button"
-                          onClick={() =>
-                            onReschedule(reservation)
-                          }
+                          onClick={() => onReschedule(reservation)}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-[#CFE3D9] px-3 py-2 text-xs font-medium text-[#0B4A2E] transition hover:bg-[#EEF7F2]"
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -157,15 +149,27 @@ export default function MyReservations({
                         {/* CANCEL */}
                         <button
                           type="button"
-                          onClick={() =>
-                            onCancel(reservation)
-                          }
+                          onClick={() => onCancel(reservation)}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-[#E9A8A8] px-3 py-2 text-xs font-medium text-[#C0392B] transition hover:bg-[#FDF1F1]"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           Cancel
                         </button>
                       </>
+                    )}
+
+                    {/* =================================================
+                        PENDING ACTIONS
+                    ================================================== */}
+                    {reservation.status === "Pending" && (
+                      <button
+                        type="button"
+                        onClick={() => onCancel(reservation)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#E9A8A8] px-3 py-2 text-xs font-medium text-[#C0392B] transition hover:bg-[#FDF1F1]"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Cancel
+                      </button>
                     )}
 
                   </div>

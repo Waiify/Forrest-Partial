@@ -20,6 +20,7 @@ import StaffDashboard from './StaffDashboard.jsx'
 import StaffSpacesandServicesManagement from './StaffSpacesandServicesManagement.jsx'
 import StaffSpacesandServicesAvailability from './StaffSpacesandServicesAvailability.jsx'
 import AdminSettings from './AdminSettings.jsx'
+import StaffReservation from './StaffReservations.jsx'
 
 
 
@@ -55,6 +56,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/StaffDashboard" element={<StaffDashboard />} />
         <Route path="/StaffSpacesandServicesManagement" element={<StaffSpacesandServicesManagement />} />
         <Route path="/StaffSpacesandServicesAvailability" element={<StaffSpacesandServicesAvailability />} />
+        <Route path="/StaffReservation" element={<StaffReservation />} />
         <Route path="/customers" element={<Customers />} />
 
         {/* Management pages / Pages para sa management. */}

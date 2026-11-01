@@ -1,20 +1,19 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarDays, Plus, RefreshCw, Search, X } from "lucide-react";
+import { CalendarClock, CalendarDays, Check, Plus, RefreshCw, Search, X } from "lucide-react";
 
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
 
-// Set VITE_API_URL in your .env file (e.g. VITE_API_URL=https://your-api.com/api).
-// If you use Create React App, change this to process.env.REACT_APP_API_URL.
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 const STATUSES = ["Pending", "Confirmed", "Checked in", "Completed", "Cancelled"];
 const BOOKABLE_CAPSULE_STATUSES = ["Available", "Reserved"];
 const OVERDUE_STATUSES = ["Checked in", "Completed"];
+const RESCHEDULABLE_STATUSES = ["Pending", "Confirmed"];
 
 const STATUS_STYLES = {
   Pending: "bg-amber-50 text-amber-700",
-  Confirmed: "bg-emerald-50 text-emerald-700",
+  Confirmed: "bg-emerald-50 text-emerald-700", 
   "Checked in": "bg-blue-50 text-blue-700",
   Completed: "bg-slate-100 text-slate-600",
   Cancelled: "bg-red-50 text-red-700",
@@ -38,8 +37,7 @@ async function readResponse(response) {
   return data;
 }
 
-// If your admin routes need authentication, add the token here, e.g.
-// headers: { Authorization: `Bearer ${token}` } or credentials: "include".
+
 async function fetchCapsules() {
   return fetch(`${API}/capsules?archived=false`).then(readResponse);
 }
@@ -53,9 +51,7 @@ async function fetchReservationData() {
   return {
     reservations,
     customers,
-    // Every capsule, so the filter and table can show any reservation's capsule.
     allCapsules,
-    // Only capsules that can take a new booking, used by the form.
     bookableCapsules: allCapsules.filter((capsule) =>
       BOOKABLE_CAPSULE_STATUSES.includes(capsule.status)
     ),
@@ -68,6 +64,13 @@ function localDateValue(value) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
     .toISOString()
     .slice(0, 10);
+}
+
+function localDateTimeValue(value) {
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
 }
 
 function formatDate(value) {
@@ -152,7 +155,7 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
     }
   }
 
-  return (
+ return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#04281A]/50 p-4 backdrop-blur-[2px]"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
@@ -180,7 +183,7 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
             <X className="h-5 w-5" />
           </button>
         </div>
-
+ 
         <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">Customer</span>
@@ -254,7 +257,7 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
             </p>
           )}
         </div>
-
+ 
         <div className="flex justify-end gap-2 border-t border-[#DCEBE3] px-6 py-4">
           <button
             type="button"
@@ -275,7 +278,143 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
     </div>
   );
 }
-
+ 
+// Form component for moving an existing reservation to a new date, time, or duration.
+function RescheduleModal({ reservation, capsuleName, onClose, onSave, saving }) {
+  const [form, setForm] = useState({
+    startAt: localDateTimeValue(reservation.startAt),
+    durationHours: String(reservation.durationHours ?? 1),
+  });
+  const [error, setError] = useState("");
+ 
+  function update(key, value) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+ 
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+ 
+    const hours = Number(form.durationHours);
+    if (!form.startAt) {
+      setError("Choose a new start date and time.");
+      return;
+    }
+    if (!Number.isFinite(hours) || hours < 0.5 || hours > 24) {
+      setError("Duration must be between 0.5 and 24 hours.");
+      return;
+    }
+    if (new Date(form.startAt) < new Date()) {
+      setError("The new start time can't be in the past.");
+      return;
+    }
+ 
+    const unchanged =
+      new Date(form.startAt).getTime() === new Date(reservation.startAt).getTime() &&
+      hours === Number(reservation.durationHours);
+    if (unchanged) {
+      setError("Pick a different date, time, or duration to reschedule.");
+      return;
+    }
+ 
+    try {
+      await onSave({
+        startAt: new Date(form.startAt).toISOString(),
+        durationHours: hours,
+      });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+ 
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#04281A]/50 p-4 backdrop-blur-[2px]"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <form
+        onSubmit={submit}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reschedule-form-title"
+        className="w-full max-w-lg rounded-2xl bg-white shadow-2xl"
+      >
+        <div className="flex items-start justify-between border-b border-[#DCEBE3] px-6 py-5">
+          <div>
+            <h2 id="reschedule-form-title" className="text-lg font-semibold text-[#0B3B2A]">
+              Reschedule reservation
+            </h2>
+            <p className="mt-1 text-sm text-[#5F7F70]">
+              {reservation.guestName} · {capsuleName}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-lg p-1.5 text-[#5F7F70] hover:bg-[#EAF4EE]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+ 
+        <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
+          <div className="rounded-lg bg-[#F3F9F5] px-3 py-2.5 text-sm text-[#315D49] sm:col-span-2">
+            <span className="font-semibold">Current booking: </span>
+            {formatDate(reservation.startAt)}, {formatTime(reservation.startAt)} –{" "}
+            {formatTime(reservation.endAt)}
+          </div>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">New start date and time</span>
+            <input
+              className={inputClass}
+              type="datetime-local"
+              value={form.startAt}
+              onChange={(event) => update("startAt", event.target.value)}
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">Duration (hours)</span>
+            <input
+              className={inputClass}
+              type="number"
+              min="0.5"
+              max="24"
+              step="0.5"
+              value={form.durationHours}
+              onChange={(event) => update("durationHours", event.target.value)}
+              required
+            />
+          </label>
+          {error && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 sm:col-span-2" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+ 
+        <div className="flex justify-end gap-2 border-t border-[#DCEBE3] px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-[#5F7F70] hover:bg-[#F3F9F5]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-[#2F9E7A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a8f6f] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save new schedule"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+ 
 // Main admin page for viewing, creating, filtering, and updating reservations.
 export default function AdminReservation() {
   const navigate = useNavigate();
@@ -286,9 +425,11 @@ export default function AdminReservation() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [actionSuccess, setActionSuccess] = useState("");
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [rescheduling, setRescheduling] = useState(null);
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [capsuleFilter, setCapsuleFilter] = useState("all");
@@ -332,7 +473,6 @@ export default function AdminReservation() {
     };
   }, []);
 
-  // Quietly refreshes capsule availability after a booking changes.
   async function refreshCapsules() {
     try {
       const capsules = await fetchCapsules();
@@ -340,8 +480,8 @@ export default function AdminReservation() {
       setBookableCapsules(
         capsules.filter((capsule) => BOOKABLE_CAPSULE_STATUSES.includes(capsule.status))
       );
-    } catch {
-      // The admin can still use the Refresh button if this fails.
+    } catch (err) {
+      setActionError(err.message || "Could not refresh capsules.");
     }
   }
 
@@ -354,13 +494,11 @@ export default function AdminReservation() {
     return navigate("/dashboard");
   }
 
-  // Lets the table show a capsule's name instead of its raw ID.
   const capsuleNames = useMemo(
     () => Object.fromEntries(allCapsules.map((capsule) => [capsule.capsuleId, capsule.capsuleName])),
     [allCapsules]
   );
 
-  // Applies all selected filters and the customer search to the reservation list.
   const filteredReservations = useMemo(() => {
     const query = search.trim().toLowerCase();
     return reservations.filter((reservation) => {
@@ -378,7 +516,6 @@ export default function AdminReservation() {
     });
   }, [reservations, search, dateFilter, capsuleFilter, statusFilter, paymentFilter]);
 
-  // Summary numbers. Cancelled bookings are excluded from payment figures.
   const pendingCount = reservations.filter((item) => item.status === "Pending").length;
   const billable = reservations.filter((item) => item.status !== "Cancelled");
   const paidCount = billable.filter((item) => item.paymentStatus === "Paid").length;
@@ -387,7 +524,7 @@ export default function AdminReservation() {
     billable.filter((item) => (item.paymentStatus || "Unpaid") === "Unpaid")
   );
 
-  // Saves a new reservation and refreshes the displayed data.
+ // Saves a new reservation and refreshes the displayed data.
   async function createReservation(data) {
     setSaving(true);
     try {
@@ -402,7 +539,22 @@ export default function AdminReservation() {
       setSaving(false);
     }
   }
-
+ 
+  // Sends a PATCH to a reservation and merges the response into the table row.
+  // Merging keeps fields the server omits (e.g. guestName).
+  async function patchReservation(reservation, body) {
+    const updated = await readResponse(await fetch(`${API}/reservations/${reservation._id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+    setReservations((current) =>
+      current.map((item) => (item._id === updated._id ? { ...item, ...updated } : item))
+    );
+    refreshCapsules();
+    return updated;
+  }
+ 
   // Updates a reservation booking status.
   async function updateStatus(reservation, status) {
     if (
@@ -414,30 +566,72 @@ export default function AdminReservation() {
     ) {
       return;
     }
-
+ 
     setActionError("");
+    setActionSuccess("");
     setUpdatingId(reservation._id);
     try {
-      const updated = await readResponse(await fetch(`${API}/reservations/${reservation._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      }));
-      // Merge into the existing row so fields the server omits (e.g. guestName) are kept.
-      setReservations((current) =>
-        current.map((item) => (item._id === updated._id ? { ...item, ...updated } : item))
-      );
-      refreshCapsules();
+      await patchReservation(reservation, { status });
     } catch (err) {
       setActionError(err.message || "Could not update reservation.");
     } finally {
       setUpdatingId("");
     }
   }
-
+ 
+  // Approves a pending reservation request by confirming it.
+  async function approveReservation(reservation) {
+    setActionError("");
+    setActionSuccess("");
+    setUpdatingId(reservation._id);
+    try {
+      await patchReservation(reservation, { status: "Confirmed" });
+      setActionSuccess(`Approved ${reservation.guestName}'s reservation.`);
+    } catch (err) {
+      setActionError(err.message || "Could not approve reservation.");
+    } finally {
+      setUpdatingId("");
+    }
+  }
+ 
+  // Declines a pending reservation request. Declined requests are stored as "Cancelled".
+  async function declineReservation(reservation) {
+    const isPaid = (reservation.paymentStatus || "Unpaid") === "Paid";
+    const message = isPaid
+      ? `Decline ${reservation.guestName}'s request? It is already paid, so remember to mark the payment as Refunded.`
+      : `Decline ${reservation.guestName}'s reservation request?`;
+    if (!window.confirm(message)) return;
+ 
+    setActionError("");
+    setActionSuccess("");
+    setUpdatingId(reservation._id);
+    try {
+      await patchReservation(reservation, { status: "Cancelled" });
+      setActionSuccess(`Declined ${reservation.guestName}'s reservation.`);
+    } catch (err) {
+      setActionError(err.message || "Could not decline reservation.");
+    } finally {
+      setUpdatingId("");
+    }
+  }
+ 
+  async function rescheduleReservation(patch) {
+    setSaving(true);
+    setActionError("");
+    setActionSuccess("");
+    try {
+      await patchReservation(rescheduling, patch);
+      setActionSuccess(`Rescheduled ${rescheduling.guestName}'s reservation.`);
+      setRescheduling(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+ 
   // Updates the payment status for a reservation.
   async function updatePayment(reservation, patch) {
     setActionError("");
+    setActionSuccess("");
     setUpdatingId(reservation._id + "-pay");
     try {
       const updated = await readResponse(
@@ -456,13 +650,13 @@ export default function AdminReservation() {
       setUpdatingId("");
     }
   }
-
+ 
   const hasFilters =
     search || dateFilter || capsuleFilter !== "all" || statusFilter !== "all" || paymentFilter !== "all";
-
+ 
   return (
     <div className="flex h-screen w-full bg-[#F4F8F5] text-[#0B3B2A]">
-      {/* Admin navigation sidebar. */}
+      {}
       <Sidebar active="Reservation" onNavigate={handleNavigate} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header active="Reservation" />
@@ -472,7 +666,7 @@ export default function AdminReservation() {
               <div>
                 <h2 className="text-xl font-bold tracking-tight text-[#0B3B2A]">Reservation schedule</h2>
                 <p className="mt-1 text-sm text-[#6F8E7F]">
-                  Create bookings, monitor status, track payments, and update reservations.
+                  Approve or decline requests, reschedule bookings, track payments, and update reservations.
                 </p>
               </div>
               <button
@@ -484,8 +678,8 @@ export default function AdminReservation() {
                 New reservation
               </button>
             </div>
-
-            {/* Stat cards */}
+ 
+            {}
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <StatCard
                 label="All reservations"
@@ -518,8 +712,8 @@ export default function AdminReservation() {
                 tint="bg-red-50 text-red-700"
               />
             </div>
-
-            {/* Reservations table */}
+ 
+            {}
             <section className="overflow-hidden rounded-2xl border border-[#DCEBE3] bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#DCEBE3] px-5 py-4 sm:px-6">
                 <div>
@@ -539,8 +733,8 @@ export default function AdminReservation() {
                   Refresh
                 </button>
               </div>
-
-              {/* Filters */}
+ 
+              {}
               <div className="flex flex-wrap items-end gap-3 border-b border-[#DCEBE3] bg-[#FAFCFA] px-5 py-4 sm:px-6">
                 <label className="block min-w-48 flex-1 sm:max-w-64">
                   <span className="mb-1.5 block text-xs font-semibold text-[#5F7F70]">Search customer</span>
@@ -622,7 +816,7 @@ export default function AdminReservation() {
                   </button>
                 )}
               </div>
-
+ 
               {(error || actionError) && (
                 <div
                   className="flex flex-wrap items-center justify-between gap-3 border-b border-red-100 bg-red-50 px-5 py-3 text-sm text-red-700 sm:px-6"
@@ -636,9 +830,26 @@ export default function AdminReservation() {
                   )}
                 </div>
               )}
-
+ 
+              {actionSuccess && !error && !actionError && (
+                <div
+                  className="flex items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50 px-5 py-3 text-sm text-emerald-700 sm:px-6"
+                  role="status"
+                >
+                  <span>{actionSuccess}</span>
+                  <button
+                    type="button"
+                    onClick={() => setActionSuccess("")}
+                    aria-label="Dismiss"
+                    className="rounded p-0.5 hover:bg-emerald-100"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+ 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px] border-collapse text-left">
+                <table className="w-full min-w-[1200px] border-collapse text-left">
                   <thead>
                     <tr className="bg-[#F7FAF8]">
                       {[
@@ -649,6 +860,7 @@ export default function AdminReservation() {
                         "Amount",
                         "Booking status",
                         "Payment",
+                        "Actions",
                       ].map((heading) => (
                         <th
                           key={heading}
@@ -662,19 +874,19 @@ export default function AdminReservation() {
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={7} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
+                        <td colSpan={8} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
                           Loading reservations...
                         </td>
                       </tr>
                     ) : error ? (
                       <tr>
-                        <td colSpan={7} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
+                        <td colSpan={8} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
                           Reservation data could not be loaded.
                         </td>
                       </tr>
                     ) : filteredReservations.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-5 py-14 text-center">
+                        <td colSpan={8} className="px-5 py-14 text-center">
                           <CalendarDays className="mx-auto h-8 w-8 text-[#9BB6A8]" />
                           <p className="mt-3 font-semibold text-[#0B3B2A]">No reservations found</p>
                           <p className="mt-1 text-sm text-[#6F8E7F]">
@@ -692,6 +904,8 @@ export default function AdminReservation() {
                         const payStatus = reservation.paymentStatus || "Unpaid";
                         const needsAttention =
                           payStatus === "Unpaid" && OVERDUE_STATUSES.includes(reservation.status);
+                        const isPending = reservation.status === "Pending";
+                        const canReschedule = RESCHEDULABLE_STATUSES.includes(reservation.status);
                         return (
                           <tr
                             key={reservation._id}
@@ -773,6 +987,47 @@ export default function AdminReservation() {
                                 ))}
                               </select>
                             </td>
+                            {/* Approve / decline / reschedule */}
+                            <td className="px-4 py-4">
+                              <div className="flex items-center gap-2">
+                                {isPending && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => approveReservation(reservation)}
+                                      disabled={isBusy}
+                                      className="inline-flex items-center gap-1 rounded-lg bg-[#2F9E7A] px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#2a8f6f] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      <Check className="h-3.5 w-3.5" />
+                                      Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => declineReservation(reservation)}
+                                      disabled={isBusy}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                      Decline
+                                    </button>
+                                  </>
+                                )}
+                                {canReschedule && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRescheduling(reservation)}
+                                    disabled={isBusy}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-[#CFE3D9] px-2.5 py-1.5 text-xs font-semibold text-[#315D49] transition hover:bg-[#F3F9F5] disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    <CalendarClock className="h-3.5 w-3.5" />
+                                    Reschedule
+                                  </button>
+                                )}
+                                {!isPending && !canReschedule && (
+                                  <span className="text-xs text-[#9BB6A8]">—</span>
+                                )}
+                              </div>
+                            </td>
                           </tr>
                         );
                       })
@@ -784,8 +1039,8 @@ export default function AdminReservation() {
           </div>
         </main>
       </div>
-
-      {/* Displays the reservation form when requested by the administrator. */}
+ 
+      {}
       {showForm && (
         <ReservationModal
           customers={customers}
@@ -793,6 +1048,17 @@ export default function AdminReservation() {
           saving={saving}
           onClose={() => setShowForm(false)}
           onSave={createReservation}
+        />
+      )}
+ 
+      {}
+      {rescheduling && (
+        <RescheduleModal
+          reservation={rescheduling}
+          capsuleName={capsuleNames[rescheduling.capsuleId] || rescheduling.capsuleId}
+          saving={saving}
+          onClose={() => setRescheduling(null)}
+          onSave={rescheduleReservation}
         />
       )}
     </div>
