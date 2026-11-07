@@ -164,10 +164,166 @@ export default function CustomerDashboard() {
 
 
   /* =====================================================
-      LOAD RESERVATIONS FROM MONGODB
+      LOAD SAVED RESERVATION ACTIVITIES FROM LOCAL STORAGE
   ====================================================== */
 
   useEffect(() => {
+
+    const savedActivities =
+      localStorage.getItem(
+        "reservationActivities"
+      );
+
+
+    if (!savedActivities) {
+      return;
+    }
+
+
+    try {
+
+      const parsedActivities =
+        JSON.parse(
+          savedActivities
+        );
+
+
+      if (
+        parsedActivities &&
+        typeof parsedActivities === "object" &&
+        !Array.isArray(parsedActivities)
+      ) {
+
+        setReservationActivities(
+          parsedActivities
+        );
+
+      }
+
+    } catch (error) {
+
+      console.error(
+        "Failed to load saved reservation activities:",
+        error
+      );
+
+    }
+
+  }, []);
+
+
+  /* =====================================================
+      SAVE RESERVATION ACTIVITIES TO LOCAL STORAGE
+  ====================================================== */
+
+  const saveReservationActivities =
+    (updatedActivities) => {
+
+      try {
+
+        localStorage.setItem(
+          "reservationActivities",
+          JSON.stringify(updatedActivities)
+        );
+
+      } catch (error) {
+
+        console.error(
+          "Failed to save reservation activities:",
+          error
+        );
+
+      }
+
+    };
+
+
+  /* =====================================================
+      APPEND RESERVATION ACTIVITY SAFELY
+      Always reads the latest localStorage value first so
+      activities cannot be lost because of stale React state.
+  ====================================================== */
+  const appendReservationActivity = (
+    reservationId,
+    activity
+  ) => {
+
+    if (!reservationId) {
+      console.error(
+        "Cannot save reservation activity: missing reservation ID."
+      );
+      return;
+    }
+
+    const key = String(reservationId);
+    let savedActivities = {};
+
+    try {
+      const stored = localStorage.getItem(
+        "reservationActivities"
+      );
+
+      if (stored) {
+        const parsed = JSON.parse(stored);
+
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          !Array.isArray(parsed)
+        ) {
+          savedActivities = parsed;
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Failed to read saved reservation activities:",
+        error
+      );
+    }
+
+    const existingActivities =
+      Array.isArray(savedActivities[key])
+        ? savedActivities[key]
+        : [];
+
+    const duplicate = existingActivities.some(
+      (item) =>
+        item.action === activity.action &&
+        item.details === activity.details
+    );
+
+    if (duplicate) {
+      setReservationActivities(savedActivities);
+      return;
+    }
+
+    const updatedActivities = {
+      ...savedActivities,
+      [key]: [
+        ...existingActivities,
+        activity,
+      ],
+    };
+
+    saveReservationActivities(updatedActivities);
+    setReservationActivities(updatedActivities);
+
+    console.log(
+      "Reservation activity saved locally:",
+      key,
+      activity
+    );
+  };
+
+
+  /* =====================================================
+      LOAD RESERVATIONS FROM MONGODB
+      AND DETECT STATUS CHANGES
+  ====================================================== */
+
+  useEffect(() => {
+
+    let intervalId;
 
     const loadReservations = async () => {
 
@@ -301,7 +457,10 @@ export default function CustomerDashboard() {
               return {
 
                 id:
-                  reservation._id,
+                  String(
+                    reservation._id ||
+                    reservation.id
+                  ),
 
                 date:
                   `${date} (${day})`,
@@ -352,6 +511,180 @@ export default function CustomerDashboard() {
           );
 
 
+        /* =================================================
+            DETECT PENDING -> CONFIRMED
+            MongoDB remains the source of truth for status.
+            localStorage only remembers the previous status
+            so the customer can receive a local notification.
+        ================================================== */
+
+        const statusHistoryKey =
+          `reservationStatusHistory_${customerId}`;
+
+        let previousStatuses = {};
+
+        try {
+
+          const savedStatusHistory =
+            localStorage.getItem(
+              statusHistoryKey
+            );
+
+          if (savedStatusHistory) {
+            previousStatuses =
+              JSON.parse(
+                savedStatusHistory
+              ) || {};
+          }
+
+        } catch (error) {
+
+          console.error(
+            "Failed to load reservation status history:",
+            error
+          );
+
+        }
+
+
+        const updatedStatuses = {
+          ...previousStatuses,
+        };
+
+
+        const newlyConfirmedReservations =
+          formattedReservations.filter(
+            (reservation) =>
+              previousStatuses[reservation.id] ===
+                "Pending" &&
+              reservation.status ===
+                "Confirmed"
+          );
+
+
+        if (
+          newlyConfirmedReservations.length >
+          0
+        ) {
+
+          newlyConfirmedReservations.forEach(
+            (reservation) => {
+
+              const confirmationActivity = {
+
+                action:
+                  "Reservation Confirmed",
+
+                details:
+                  `Reservation for Capsule ${reservation.capsule} has been confirmed by the staff.`,
+
+                timestamp:
+                  new Date().toLocaleString(),
+
+              };
+
+
+              /* =========================================
+                  SAVE CONFIRMATION ACTIVITY LOCALLY
+              ========================================== */
+
+              appendReservationActivity(
+                reservation.id,
+                confirmationActivity
+              );
+
+
+              /* =========================================
+                  SAVE CONFIRMATION NOTIFICATION LOCALLY
+              ========================================== */
+
+              setNotifications(
+                (prev) => {
+
+                  const notificationId =
+                    `confirmed-${reservation.id}`;
+
+                  const alreadyNotified =
+                    prev.some(
+                      (notification) =>
+                        notification.id ===
+                        notificationId
+                    );
+
+
+                  if (alreadyNotified) {
+                    return prev;
+                  }
+
+
+                  const confirmationNotification = {
+                    id: notificationId,
+                    title:
+                      "Reservation Confirmed",
+                    message:
+                      `Your reservation for Capsule ${reservation.capsule} has been confirmed by the staff.`,
+                    status:
+                      "Confirmed",
+                    type:
+                      "confirmed",
+                    timestamp:
+                      new Date().toLocaleString(),
+                    read: false,
+                  };
+
+
+                  const updatedNotifications = [
+                    confirmationNotification,
+                    ...prev,
+                  ];
+
+
+                  saveNotifications(
+                    updatedNotifications
+                  );
+
+                  return updatedNotifications;
+
+                }
+              );
+
+            }
+          );
+
+        }
+
+
+        /* =================================================
+            REMEMBER THE CURRENT STATUS OF EACH RESERVATION
+        ================================================== */
+
+        formattedReservations.forEach(
+          (reservation) => {
+            updatedStatuses[reservation.id] =
+              reservation.status;
+          }
+        );
+
+
+        try {
+
+          localStorage.setItem(
+            statusHistoryKey,
+            JSON.stringify(
+              updatedStatuses
+            )
+          );
+
+        } catch (error) {
+
+          console.error(
+            "Failed to save reservation status history:",
+            error
+          );
+
+        }
+
+
         setReservationList(
           formattedReservations
         );
@@ -375,6 +708,22 @@ export default function CustomerDashboard() {
 
 
     loadReservations();
+
+
+    /*
+      Poll MongoDB every 5 seconds so a staff approval
+      can be detected even while the customer dashboard
+      is already open.
+    */
+    intervalId = setInterval(
+      loadReservations,
+      5000
+    );
+
+
+    return () => {
+      clearInterval(intervalId);
+    };
 
   }, [user?.id, user?._id]);
 
@@ -838,22 +1187,9 @@ export default function CustomerDashboard() {
         };
 
 
-        setReservationActivities(
-          (prev) => ({
-
-            ...prev,
-
-            [reservation.id]: [
-
-              ...(prev[
-                reservation.id
-              ] || []),
-
-              activity,
-
-            ],
-
-          })
+        appendReservationActivity(
+          reservation.id,
+          activity
         );
 
 
@@ -1018,22 +1354,9 @@ export default function CustomerDashboard() {
       };
 
 
-      setReservationActivities(
-        (prev) => ({
-
-          ...prev,
-
-          [selectedReservation.id]: [
-
-            ...(prev[
-              selectedReservation.id
-            ] || []),
-
-            activity,
-
-          ],
-
-        })
+      appendReservationActivity(
+        selectedReservation.id,
+        activity
       );
 
 
@@ -1823,7 +2146,6 @@ export default function CustomerDashboard() {
 
                   }
 
-
                   console.log(
                     "Reservation saved to MongoDB:",
                     data
@@ -1839,8 +2161,15 @@ export default function CustomerDashboard() {
                     ...reservation,
 
                     id:
-                      data._id ||
-                      Date.now(),
+                      String(
+                        data._id ||
+                        data.id ||
+                        data.reservation?._id ||
+                        data.reservation?.id ||
+                        data.data?._id ||
+                        data.data?.id ||
+                        Date.now()
+                      ),
 
                     status:
                       data.status ||
@@ -1873,6 +2202,49 @@ export default function CustomerDashboard() {
                       reservation.checkOut,
 
                   };
+
+
+                  /* =================================================
+                      REMEMBER INITIAL PENDING STATUS LOCALLY
+                      This is only for detecting Pending -> Confirmed.
+                      MongoDB remains the source of truth for status.
+                  ================================================== */
+
+                  try {
+
+                    const statusHistoryKey =
+                      `reservationStatusHistory_${customerId}`;
+
+                    const savedStatusHistory =
+                      localStorage.getItem(
+                        statusHistoryKey
+                      );
+
+                    const statusHistory =
+                      savedStatusHistory
+                        ? JSON.parse(
+                            savedStatusHistory
+                          ) || {}
+                        : {};
+
+                    statusHistory[newReservation.id] =
+                      newReservation.status;
+
+                    localStorage.setItem(
+                      statusHistoryKey,
+                      JSON.stringify(
+                        statusHistory
+                      )
+                    );
+
+                  } catch (error) {
+
+                    console.error(
+                      "Failed to save initial reservation status:",
+                      error
+                    );
+
+                  }
 
 
                   /* =================================================
@@ -1960,23 +2332,9 @@ export default function CustomerDashboard() {
                   };
 
 
-                  setReservationActivities(
-                    (prev) => ({
-
-                      ...prev,
-
-                      [newReservation.id]:
-                        [
-
-                          ...(prev[
-                            newReservation.id
-                          ] || []),
-
-                          activity,
-
-                        ],
-
-                    })
+                  appendReservationActivity(
+                    newReservation.id,
+                    activity
                   );
 
 
@@ -2039,6 +2397,12 @@ export default function CustomerDashboard() {
 
                   reservation={
                     selectedReservation
+                  }
+
+                  activities={
+                    reservationActivities[
+                      selectedReservation?.id
+                    ] || []
                   }
 
                   onBack={() => {

@@ -1,6 +1,19 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, CalendarDays, Check, Plus, RefreshCw, Search, X } from "lucide-react";
+import {
+  CalendarClock,
+  CalendarDays,
+  BarChart3,
+  Check,
+  Clock3,
+  CreditCard,
+  Eye,
+  Plus,
+  RefreshCw,
+  Search,
+  UserRound,
+  X,
+} from "lucide-react";
 
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
@@ -100,6 +113,13 @@ function sumPrice(list) {
   return list.reduce((total, item) => total + (Number(item.totalPrice) || 0), 0);
 }
 
+function isHistoricalReservation(reservation, now = Date.now()) {
+  return (
+    ["Completed", "Cancelled"].includes(reservation.status) ||
+    new Date(reservation.endAt).getTime() <= now
+  );
+}
+
 // Component for displaying reservation summary statistics.
 function StatCard({ label, value, detail, tint }) {
   return (
@@ -110,6 +130,311 @@ function StatCard({ label, value, detail, tint }) {
         {detail}
       </p>
     </section>
+  );
+}
+
+function MetricBar({ label, value, maxValue, tint = "bg-[#2F9E7A]" }) {
+  const width = maxValue > 0 ? (value / maxValue) * 100 : 0;
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
+        <span className="truncate text-[#315D49]">{label}</span>
+        <span className="shrink-0 font-semibold text-[#0B3B2A]">{value}</span>
+      </div>
+      <div
+        className="h-2 overflow-hidden rounded-full bg-[#EAF4EE]"
+        role="meter"
+        aria-label={`${label}: ${value}`}
+        aria-valuemin={0}
+        aria-valuemax={maxValue || 1}
+        aria-valuenow={value}
+      >
+        <div className={`h-full rounded-full ${tint}`} style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function ReservationAnalytics({ reservations, capsuleNames }) {
+  const monthlyBookings = useMemo(() => {
+    const now = new Date();
+    const months = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - 5 + index, 1);
+      return {
+        key: `${date.getFullYear()}-${date.getMonth()}`,
+        label: new Intl.DateTimeFormat(undefined, { month: "short" }).format(date),
+        count: 0,
+      };
+    });
+    const countsByMonth = new Map(months.map((month) => [month.key, month]));
+
+    reservations.forEach((reservation) => {
+      const createdAt = new Date(reservation.createdAt || reservation.startAt);
+      if (Number.isNaN(createdAt.getTime())) return;
+      const month = countsByMonth.get(`${createdAt.getFullYear()}-${createdAt.getMonth()}`);
+      if (month) month.count += 1;
+    });
+
+    return months;
+  }, [reservations]);
+
+  const statusCounts = useMemo(
+    () =>
+      STATUSES.map((status) => ({
+        label: status,
+        count: reservations.filter((reservation) => reservation.status === status).length,
+      })),
+    [reservations]
+  );
+
+  const paymentCounts = useMemo(
+    () =>
+      PAYMENT_STATUSES.map((status) => ({
+        label: status,
+        count: reservations.filter(
+          (reservation) => (reservation.paymentStatus || "Unpaid") === status
+        ).length,
+      })),
+    [reservations]
+  );
+
+  const capsuleCounts = useMemo(() => {
+    const counts = new Map();
+    reservations.forEach((reservation) => {
+      const id = reservation.capsuleId || "unknown";
+      counts.set(id, (counts.get(id) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .map(([id, count]) => ({
+        label: capsuleNames[id] || id,
+        count,
+      }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+      .slice(0, 5);
+  }, [reservations, capsuleNames]);
+
+  const maxMonthlyBookings = Math.max(...monthlyBookings.map((month) => month.count), 1);
+  const maxStatusCount = Math.max(...statusCounts.map((status) => status.count), 1);
+  const maxPaymentCount = Math.max(...paymentCounts.map((payment) => payment.count), 1);
+  const maxCapsuleCount = Math.max(...capsuleCounts.map((capsule) => capsule.count), 1);
+
+  return (
+    <section aria-labelledby="reservation-analytics-title" className="space-y-4">
+      <div>
+        <h3 id="reservation-analytics-title" className="text-lg font-bold text-[#0B3B2A]">
+          Reservation analytics
+        </h3>
+        <p className="mt-1 text-sm text-[#6F8E7F]">
+          Booking trends and current status breakdowns across all reservations.
+        </p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <section className="rounded-2xl border border-[#DCEBE3] bg-white p-5 shadow-sm lg:col-span-2">
+          <div className="mb-5 flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-[#2F8060]" />
+            <div>
+              <h4 className="font-semibold text-[#0B3B2A]">Monthly bookings</h4>
+              <p className="text-xs text-[#6F8E7F]">Created in the last six months</p>
+            </div>
+          </div>
+          <div
+            className="grid min-h-40 grid-cols-6 items-end gap-3"
+            role="img"
+            aria-label="Monthly reservation counts for the last six months"
+          >
+            {monthlyBookings.map((month) => (
+              <div key={month.key} className="flex h-full flex-col items-center justify-end gap-2">
+                <span className="text-xs font-semibold text-[#315D49]">{month.count}</span>
+                <div className="flex h-24 w-full items-end rounded-t-md bg-[#F3F9F5]">
+                  <div
+                    className="w-full rounded-t-md bg-[#2F9E7A] transition-all"
+                    style={{
+                      height: `${month.count ? Math.max((month.count / maxMonthlyBookings) * 100, 5) : 0}%`,
+                    }}
+                  />
+                </div>
+                <span className="text-xs text-[#6F8E7F]">{month.label}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-[#DCEBE3] bg-white p-5 shadow-sm">
+          <h4 className="font-semibold text-[#0B3B2A]">Booking status</h4>
+          <p className="mb-5 mt-1 text-xs text-[#6F8E7F]">Current reservations by status</p>
+          <div className="space-y-4">
+            {statusCounts.map((status) => (
+              <MetricBar
+                key={status.label}
+                label={status.label}
+                value={status.count}
+                maxValue={maxStatusCount}
+                tint={
+                  status.label === "Cancelled"
+                    ? "bg-red-400"
+                    : status.label === "Pending"
+                    ? "bg-amber-400"
+                    : status.label === "Completed"
+                    ? "bg-slate-400"
+                    : "bg-[#2F9E7A]"
+                }
+              />
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-[#DCEBE3] bg-white p-5 shadow-sm">
+          <h4 className="font-semibold text-[#0B3B2A]">Payment status</h4>
+          <p className="mb-5 mt-1 text-xs text-[#6F8E7F]">Current payment breakdown</p>
+          <div className="space-y-4">
+            {paymentCounts.map((payment) => (
+              <MetricBar
+                key={payment.label}
+                label={payment.label}
+                value={payment.count}
+                maxValue={maxPaymentCount}
+                tint={
+                  payment.label === "Paid"
+                    ? "bg-[#2F9E7A]"
+                    : payment.label === "Refunded"
+                    ? "bg-purple-400"
+                    : "bg-red-400"
+                }
+              />
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-[#DCEBE3] bg-white p-5 shadow-sm lg:col-span-2">
+          <h4 className="font-semibold text-[#0B3B2A]">Most booked capsules</h4>
+          <p className="mb-5 mt-1 text-xs text-[#6F8E7F]">Top five by reservation count</p>
+          {capsuleCounts.length === 0 ? (
+            <p className="rounded-lg bg-[#F5FAF7] px-4 py-6 text-center text-sm text-[#6F8E7F]">
+              Capsule analytics will appear when reservations are available.
+            </p>
+          ) : (
+            <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+              {capsuleCounts.map((capsule) => (
+                <MetricBar
+                  key={capsule.label}
+                  label={capsule.label}
+                  value={capsule.count}
+                  maxValue={maxCapsuleCount}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function ReservationDetailsModal({ reservation, capsuleName, onClose }) {
+  if (!reservation) return null;
+
+  const paymentStatus = reservation.paymentStatus || "Unpaid";
+  const bookingStatusStyle =
+    STATUS_STYLES[reservation.status] || "bg-slate-100 text-slate-600";
+  const paymentStatusStyle =
+    PAYMENT_STATUS_STYLES[paymentStatus] || "bg-slate-100 text-slate-600";
+  const details = [
+    ["Reservation ID", reservation._id, CreditCard],
+    ["Customer", reservation.guestName, UserRound],
+    ["Email", reservation.guestEmail, UserRound],
+    ["Capsule", capsuleName, CalendarDays],
+    ["Date", formatDate(reservation.startAt), CalendarDays],
+    ["Time", `${formatTime(reservation.startAt)} – ${formatTime(reservation.endAt)}`, Clock3],
+    [
+      "Duration",
+      `${reservation.durationHours} ${reservation.durationHours === 1 ? "hour" : "hours"}`,
+      Clock3,
+    ],
+    ["Rate", `${formatCurrency(reservation.pricePerHour)} per hour`, CreditCard],
+    ["Total", formatCurrency(reservation.totalPrice), CreditCard],
+    [
+      "Created",
+      reservation.createdAt ? formatDate(reservation.createdAt) : "Unavailable",
+      CalendarClock,
+    ],
+    [
+      "Last updated",
+      reservation.updatedAt ? formatDate(reservation.updatedAt) : "Unavailable",
+      CalendarClock,
+    ],
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#04281A]/50 p-4 backdrop-blur-[2px]"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reservation-details-title"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+      >
+        <div className="flex items-start justify-between border-b border-[#DCEBE3] px-6 py-5">
+          <div>
+            <h2 id="reservation-details-title" className="text-lg font-semibold text-[#0B3B2A]">
+              Reservation details
+            </h2>
+            <p className="mt-1 text-sm text-[#5F7F70]">
+              Review the customer and booking record.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close reservation details"
+            className="rounded-lg p-1.5 text-[#5F7F70] hover:bg-[#EAF4EE]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 px-6 pt-5">
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${bookingStatusStyle}`}>
+            {reservation.status}
+          </span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${paymentStatusStyle}`}>
+            {paymentStatus}
+          </span>
+        </div>
+
+        <dl className="grid gap-3 px-6 py-5 sm:grid-cols-2">
+          {details.map(([label, value, Icon], index) => {
+            return (
+              <div
+                key={label}
+                className={`rounded-xl bg-[#F5FAF7] p-4 ${index === 0 ? "sm:col-span-2" : ""}`}
+              >
+                <dt className="flex items-center gap-2 text-xs font-medium text-[#6F8E7F]">
+                  <Icon className="h-4 w-4 text-[#2F8060]" />
+                  {label}
+                </dt>
+                <dd className="mt-2 break-words text-sm font-semibold text-[#0B3B2A]">
+                  {value || "Unavailable"}
+                </dd>
+              </div>
+            );
+          })}
+        </dl>
+
+        <div className="flex justify-end border-t border-[#DCEBE3] px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg bg-[#2F9E7A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a8f6f]"
+          >
+            Close
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -281,34 +606,53 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
  
 // Form component for moving an existing reservation to a new date, time, or duration.
 function RescheduleModal({ reservation, capsuleName, onClose, onSave, saving }) {
+  // If the current booking is already in the past, start the field empty
+  // so the admin has to pick a valid (current or future) time.
+  const initialStart = localDateTimeValue(reservation.startAt);
+  const nowValue = localDateTimeValue(new Date());
+
   const [form, setForm] = useState({
-    startAt: localDateTimeValue(reservation.startAt),
+    startAt: initialStart < nowValue ? "" : initialStart,
     durationHours: String(reservation.durationHours ?? 1),
   });
   const [error, setError] = useState("");
- 
+
+  // Earliest selectable value: the current minute. Recomputed on every render.
+  const minStart = localDateTimeValue(new Date());
+
+  // Close with Escape.
+  useEffect(() => {
+    const onKey = (event) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
   }
- 
+
   async function submit(event) {
     event.preventDefault();
     setError("");
- 
+
     const hours = Number(form.durationHours);
     if (!form.startAt) {
       setError("Choose a new start date and time.");
+      return;
+    }
+    if (Number.isNaN(new Date(form.startAt).getTime())) {
+      setError("Enter a valid start date and time.");
       return;
     }
     if (!Number.isFinite(hours) || hours < 0.5 || hours > 24) {
       setError("Duration must be between 0.5 and 24 hours.");
       return;
     }
-    if (new Date(form.startAt) < new Date()) {
-      setError("The new start time can't be in the past.");
+    if (form.startAt < localDateTimeValue(new Date())) {
+      setError("Past dates and times can't be selected. Choose a time from now onward.");
       return;
     }
- 
+
     const unchanged =
       new Date(form.startAt).getTime() === new Date(reservation.startAt).getTime() &&
       hours === Number(reservation.durationHours);
@@ -316,7 +660,7 @@ function RescheduleModal({ reservation, capsuleName, onClose, onSave, saving }) 
       setError("Pick a different date, time, or duration to reschedule.");
       return;
     }
- 
+
     try {
       await onSave({
         startAt: new Date(form.startAt).toISOString(),
@@ -326,7 +670,7 @@ function RescheduleModal({ reservation, capsuleName, onClose, onSave, saving }) 
       setError(err.message);
     }
   }
- 
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#04281A]/50 p-4 backdrop-blur-[2px]"
@@ -357,7 +701,7 @@ function RescheduleModal({ reservation, capsuleName, onClose, onSave, saving }) 
             <X className="h-5 w-5" />
           </button>
         </div>
- 
+
         <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
           <div className="rounded-lg bg-[#F3F9F5] px-3 py-2.5 text-sm text-[#315D49] sm:col-span-2">
             <span className="font-semibold">Current booking: </span>
@@ -366,13 +710,18 @@ function RescheduleModal({ reservation, capsuleName, onClose, onSave, saving }) 
           </div>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">New start date and time</span>
+            {/* min = now, so past dates and times can't be picked in the calendar */}
             <input
               className={inputClass}
               type="datetime-local"
+              min={minStart}
               value={form.startAt}
               onChange={(event) => update("startAt", event.target.value)}
               required
             />
+            <span className="mt-1 block text-xs text-[#6F8E7F]">
+              Past dates and times can't be selected.
+            </span>
           </label>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">Duration (hours)</span>
@@ -393,7 +742,7 @@ function RescheduleModal({ reservation, capsuleName, onClose, onSave, saving }) 
             </p>
           )}
         </div>
- 
+
         <div className="flex justify-end gap-2 border-t border-[#DCEBE3] px-6 py-4">
           <button
             type="button"
@@ -414,11 +763,12 @@ function RescheduleModal({ reservation, capsuleName, onClose, onSave, saving }) 
     </div>
   );
 }
- 
+
 // Main admin page for viewing, creating, filtering, and updating reservations.
 export default function AdminReservation() {
   const navigate = useNavigate();
   const [reservations, setReservations] = useState([]);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [customers, setCustomers] = useState([]);
   const [allCapsules, setAllCapsules] = useState([]);
   const [bookableCapsules, setBookableCapsules] = useState([]);
@@ -430,6 +780,8 @@ export default function AdminReservation() {
   const [updatingId, setUpdatingId] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [rescheduling, setRescheduling] = useState(null);
+  const [viewingReservation, setViewingReservation] = useState(null);
+  const [reservationView, setReservationView] = useState("all");
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [capsuleFilter, setCapsuleFilter] = useState("all");
@@ -473,6 +825,22 @@ export default function AdminReservation() {
     };
   }, []);
 
+  useEffect(() => {
+    const nextEndAt = reservations.reduce((next, reservation) => {
+      if (["Completed", "Cancelled"].includes(reservation.status)) return next;
+      const endAt = new Date(reservation.endAt).getTime();
+      return endAt > currentTime ? Math.min(next, endAt) : next;
+    }, Infinity);
+
+    if (!Number.isFinite(nextEndAt)) return undefined;
+
+    const timeout = window.setTimeout(
+      () => setCurrentTime(Date.now()),
+      Math.min(nextEndAt - currentTime, 2_147_000_000)
+    );
+    return () => window.clearTimeout(timeout);
+  }, [reservations, currentTime]);
+
   async function refreshCapsules() {
     try {
       const capsules = await fetchCapsules();
@@ -491,6 +859,7 @@ export default function AdminReservation() {
     if (section === "Capsule") return navigate("/capsule");
     if (section === "Reservation") return navigate("/reservation");
     if (section === "Staff Management" || section === "Management") return navigate("/management");
+    if (section === "Reports" || section === "transactions") return navigate("/reports");
     return navigate("/dashboard");
   }
 
@@ -515,6 +884,32 @@ export default function AdminReservation() {
       return true;
     });
   }, [reservations, search, dateFilter, capsuleFilter, statusFilter, paymentFilter]);
+
+  const activeReservations = useMemo(
+    () => reservations.filter((reservation) => !isHistoricalReservation(reservation, currentTime)),
+    [reservations, currentTime]
+  );
+  const historyReservations = useMemo(
+    () => reservations.filter((reservation) => isHistoricalReservation(reservation, currentTime)),
+    [reservations, currentTime]
+  );
+  const visibleReservations = useMemo(() => {
+    const list =
+      reservationView === "history"
+        ? filteredReservations.filter((reservation) =>
+            isHistoricalReservation(reservation, currentTime)
+          )
+        : filteredReservations.filter(
+            (reservation) => !isHistoricalReservation(reservation, currentTime)
+          );
+    return reservationView === "history"
+      ? [...list].sort(
+          (a, b) =>
+            new Date(b.updatedAt || b.endAt).getTime() -
+            new Date(a.updatedAt || a.endAt).getTime()
+        )
+      : list;
+  }, [filteredReservations, reservationView, currentTime]);
 
   const pendingCount = reservations.filter((item) => item.status === "Pending").length;
   const billable = reservations.filter((item) => item.status !== "Cancelled");
@@ -653,10 +1048,21 @@ export default function AdminReservation() {
  
   const hasFilters =
     search || dateFilter || capsuleFilter !== "all" || statusFilter !== "all" || paymentFilter !== "all";
+  const isHistoryView = reservationView === "history";
+  const isAnalyticsView = reservationView === "analytics";
+  const tableHeadings = [
+    "Customer",
+    "Capsule",
+    "Date & time",
+    "Duration",
+    "Amount",
+    "Booking status",
+    "Payment",
+    ...(!isHistoryView ? ["Actions"] : []),
+  ];
  
   return (
     <div className="flex h-screen w-full bg-[#F4F8F5] text-[#0B3B2A]">
-      {}
       <Sidebar active="Reservation" onNavigate={handleNavigate} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header active="Reservation" />
@@ -679,48 +1085,81 @@ export default function AdminReservation() {
               </button>
             </div>
  
-            {}
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-              <StatCard
-                label="All reservations"
-                value={reservations.length}
-                detail="Saved bookings"
-                tint="bg-[#EAF4EE] text-[#0B4A2E]"
-              />
-              <StatCard
-                label="Needs confirmation"
-                value={pendingCount}
-                detail="Pending"
-                tint="bg-amber-50 text-amber-700"
-              />
-              <StatCard
-                label="Payments confirmed"
-                value={paidCount}
-                detail={`of ${billable.length} non-cancelled`}
-                tint="bg-blue-50 text-blue-700"
-              />
-              <StatCard
-                label="Collected"
-                value={formatCurrency(collected)}
-                detail="Paid bookings"
-                tint="bg-emerald-50 text-emerald-700"
-              />
-              <StatCard
-                label="Outstanding"
-                value={formatCurrency(outstanding)}
-                detail="Unpaid, not cancelled"
-                tint="bg-red-50 text-red-700"
-              />
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Reservation views">
+              {[
+                { id: "all", label: "All reservations", count: activeReservations.length },
+                { id: "history", label: "History", count: historyReservations.length },
+                { id: "analytics", label: "Analytics" },
+              ].map((view) => (
+                <button
+                  key={view.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={reservationView === view.id}
+                  onClick={() => setReservationView(view.id)}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                    reservationView === view.id
+                      ? "bg-[#0B4A2E] text-white"
+                      : "border border-[#CFE3D9] bg-white text-[#315D49] hover:bg-[#F3F9F5]"
+                  }`}
+                >
+                  {view.label}
+                  {view.count !== undefined && (
+                    <span className="ml-2 text-xs opacity-80">{view.count}</span>
+                  )}
+                </button>
+              ))}
             </div>
- 
-            {}
-            <section className="overflow-hidden rounded-2xl border border-[#DCEBE3] bg-white shadow-sm">
+
+            {isAnalyticsView ? (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                  <StatCard
+                    label="All reservations"
+                    value={reservations.length}
+                    detail="Saved bookings"
+                    tint="bg-[#EAF4EE] text-[#0B4A2E]"
+                  />
+                  <StatCard
+                    label="Needs confirmation"
+                    value={pendingCount}
+                    detail="Pending"
+                    tint="bg-amber-50 text-amber-700"
+                  />
+                  <StatCard
+                    label="Payments confirmed"
+                    value={paidCount}
+                    detail={`of ${billable.length} non-cancelled`}
+                    tint="bg-blue-50 text-blue-700"
+                  />
+                  <StatCard
+                    label="Collected"
+                    value={formatCurrency(collected)}
+                    detail="Paid bookings"
+                    tint="bg-emerald-50 text-emerald-700"
+                  />
+                  <StatCard
+                    label="Outstanding"
+                    value={formatCurrency(outstanding)}
+                    detail="Unpaid, not cancelled"
+                    tint="bg-red-50 text-red-700"
+                  />
+                </div>
+                <ReservationAnalytics
+                  reservations={reservations}
+                  capsuleNames={capsuleNames}
+                />
+              </>
+            ) : (
+              <section className="overflow-hidden rounded-2xl border border-[#DCEBE3] bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#DCEBE3] px-5 py-4 sm:px-6">
                 <div>
-                  <h3 className="font-semibold text-[#0B3B2A]">All bookings</h3>
+                  <h3 className="font-semibold text-[#0B3B2A]">
+                    {reservationView === "history" ? "Reservation history" : "All bookings"}
+                  </h3>
                   <p className="mt-0.5 text-xs text-[#6F8E7F]">
-                    {filteredReservations.length}{" "}
-                    {filteredReservations.length === 1 ? "reservation" : "reservations"}
+                    {visibleReservations.length}{" "}
+                    {visibleReservations.length === 1 ? "reservation" : "reservations"}
                   </p>
                 </div>
                 <button
@@ -734,8 +1173,7 @@ export default function AdminReservation() {
                 </button>
               </div>
  
-              {}
-              <div className="flex flex-wrap items-end gap-3 border-b border-[#DCEBE3] bg-[#FAFCFA] px-5 py-4 sm:px-6">
+                      <div className="flex flex-wrap items-end gap-3 border-b border-[#DCEBE3] bg-[#FAFCFA] px-5 py-4 sm:px-6">
                 <label className="block min-w-48 flex-1 sm:max-w-64">
                   <span className="mb-1.5 block text-xs font-semibold text-[#5F7F70]">Search customer</span>
                   <span className="relative block">
@@ -849,19 +1287,12 @@ export default function AdminReservation() {
               )}
  
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1200px] border-collapse text-left">
+                <table
+                  className={`w-full ${isHistoryView ? "min-w-[900px]" : "min-w-[1200px]"} border-collapse text-left`}
+                >
                   <thead>
                     <tr className="bg-[#F7FAF8]">
-                      {[
-                        "Customer",
-                        "Capsule",
-                        "Date & time",
-                        "Duration",
-                        "Amount",
-                        "Booking status",
-                        "Payment",
-                        "Actions",
-                      ].map((heading) => (
+                      {tableHeadings.map((heading) => (
                         <th
                           key={heading}
                           className="border-b border-[#E6EFE9] px-4 py-3 text-xs font-semibold text-[#6F8E7F] whitespace-nowrap"
@@ -874,30 +1305,36 @@ export default function AdminReservation() {
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={8} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
+                        <td colSpan={tableHeadings.length} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
                           Loading reservations...
                         </td>
                       </tr>
                     ) : error ? (
                       <tr>
-                        <td colSpan={8} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
+                        <td colSpan={tableHeadings.length} className="px-5 py-14 text-center text-sm text-[#6F8E7F]">
                           Reservation data could not be loaded.
                         </td>
                       </tr>
-                    ) : filteredReservations.length === 0 ? (
+                    ) : visibleReservations.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-5 py-14 text-center">
+                        <td colSpan={tableHeadings.length} className="px-5 py-14 text-center">
                           <CalendarDays className="mx-auto h-8 w-8 text-[#9BB6A8]" />
-                          <p className="mt-3 font-semibold text-[#0B3B2A]">No reservations found</p>
+                          <p className="mt-3 font-semibold text-[#0B3B2A]">
+                            {reservationView === "history"
+                              ? "No reservation history yet"
+                              : "No reservations found"}
+                          </p>
                           <p className="mt-1 text-sm text-[#6F8E7F]">
-                            {reservations.length === 0
+                            {reservationView === "history"
+                              ? "Completed, cancelled, and past bookings will appear here."
+                              : reservations.length === 0
                               ? "Create a reservation to get started."
                               : "Try changing or clearing the selected filters."}
                           </p>
                         </td>
                       </tr>
                     ) : (
-                      filteredReservations.map((reservation) => {
+                      visibleReservations.map((reservation) => {
                         const isBusy =
                           updatingId === reservation._id ||
                           updatingId === reservation._id + "-pay";
@@ -945,51 +1382,78 @@ export default function AdminReservation() {
                               <p className="text-sm font-medium text-[#315D49]">
                                 {formatCurrency(reservation.totalPrice)}
                               </p>
-                              {needsAttention && (
+                              {!isHistoryView && needsAttention && (
                                 <p className="mt-0.5 text-xs font-semibold text-red-600">
                                   Payment overdue
                                 </p>
                               )}
                             </td>
-                            {/* Booking status dropdown */}
                             <td className="px-4 py-4">
-                              <select
-                                aria-label={`Booking status for ${reservation.guestName}`}
-                                className={`rounded-full border-0 px-2.5 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#2F9E7A]/30 ${
-                                  STATUS_STYLES[reservation.status] || "bg-slate-100 text-slate-600"
-                                }`}
-                                value={reservation.status}
-                                disabled={isBusy}
-                                onChange={(event) =>
-                                  updateStatus(reservation, event.target.value)
-                                }
-                              >
-                                {STATUSES.map((status) => (
-                                  <option key={status}>{status}</option>
-                                ))}
-                              </select>
+                              {isHistoryView ? (
+                                <span
+                                  className={`inline-flex rounded-full px-2.5 py-1.5 text-xs font-semibold ${
+                                    STATUS_STYLES[reservation.status] || "bg-slate-100 text-slate-600"
+                                  }`}
+                                >
+                                  {reservation.status}
+                                </span>
+                              ) : (
+                                <select
+                                  aria-label={`Booking status for ${reservation.guestName}`}
+                                  className={`rounded-full border-0 px-2.5 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#2F9E7A]/30 ${
+                                    STATUS_STYLES[reservation.status] || "bg-slate-100 text-slate-600"
+                                  }`}
+                                  value={reservation.status}
+                                  disabled={isBusy}
+                                  onChange={(event) =>
+                                    updateStatus(reservation, event.target.value)
+                                  }
+                                >
+                                  {STATUSES.map((status) => (
+                                    <option key={status}>{status}</option>
+                                  ))}
+                                </select>
+                              )}
                             </td>
-                            {/* Payment status dropdown */}
                             <td className="px-4 py-4">
-                              <select
-                                aria-label={`Payment status for ${reservation.guestName}`}
-                                className={`rounded-full border-0 px-2.5 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#2F9E7A]/30 ${
-                                  PAYMENT_STATUS_STYLES[payStatus] || "bg-slate-100 text-slate-600"
-                                }`}
-                                value={payStatus}
-                                disabled={isBusy}
-                                onChange={(event) =>
-                                  updatePayment(reservation, { paymentStatus: event.target.value })
-                                }
-                              >
-                                {PAYMENT_STATUSES.map((s) => (
-                                  <option key={s}>{s}</option>
-                                ))}
-                              </select>
+                              {isHistoryView ? (
+                                <span
+                                  className={`inline-flex rounded-full px-2.5 py-1.5 text-xs font-semibold ${
+                                    PAYMENT_STATUS_STYLES[payStatus] || "bg-slate-100 text-slate-600"
+                                  }`}
+                                >
+                                  {payStatus}
+                                </span>
+                              ) : (
+                                <select
+                                  aria-label={`Payment status for ${reservation.guestName}`}
+                                  className={`rounded-full border-0 px-2.5 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#2F9E7A]/30 ${
+                                    PAYMENT_STATUS_STYLES[payStatus] || "bg-slate-100 text-slate-600"
+                                  }`}
+                                  value={payStatus}
+                                  disabled={isBusy}
+                                  onChange={(event) =>
+                                    updatePayment(reservation, { paymentStatus: event.target.value })
+                                  }
+                                >
+                                  {PAYMENT_STATUSES.map((s) => (
+                                    <option key={s}>{s}</option>
+                                  ))}
+                                </select>
+                              )}
                             </td>
                             {/* Approve / decline / reschedule */}
-                            <td className="px-4 py-4">
+                            {!isHistoryView && <td className="px-4 py-4">
                               <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingReservation(reservation)}
+                                  aria-label={`View details for ${reservation.guestName}'s reservation`}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-[#CFE3D9] px-2.5 py-1.5 text-xs font-semibold text-[#315D49] transition hover:bg-[#F3F9F5]"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                  Details
+                                </button>
                                 {isPending && (
                                   <>
                                     <button
@@ -1027,7 +1491,7 @@ export default function AdminReservation() {
                                   <span className="text-xs text-[#9BB6A8]">—</span>
                                 )}
                               </div>
-                            </td>
+                            </td>}
                           </tr>
                         );
                       })
@@ -1036,11 +1500,11 @@ export default function AdminReservation() {
                 </table>
               </div>
             </section>
+            )}
           </div>
         </main>
       </div>
  
-      {}
       {showForm && (
         <ReservationModal
           customers={customers}
@@ -1051,7 +1515,6 @@ export default function AdminReservation() {
         />
       )}
  
-      {}
       {rescheduling && (
         <RescheduleModal
           reservation={rescheduling}
@@ -1059,6 +1522,15 @@ export default function AdminReservation() {
           saving={saving}
           onClose={() => setRescheduling(null)}
           onSave={rescheduleReservation}
+        />
+      )}
+      {viewingReservation && (
+        <ReservationDetailsModal
+          reservation={reservations.find((item) => item._id === viewingReservation._id) || viewingReservation}
+          capsuleName={
+            capsuleNames[viewingReservation.capsuleId] || viewingReservation.capsuleId
+          }
+          onClose={() => setViewingReservation(null)}
         />
       )}
     </div>

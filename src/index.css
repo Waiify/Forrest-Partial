@@ -1,2 +1,14 @@
 @import "tailwindcss";
 
+@theme {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-landing: "Figtree", ui-sans-serif, system-ui, sans-serif;
+ 
+  --color-canopy: #17332a;
+  --color-fern: #356b4a;
+  --color-moss: #5d8a5e;
+  --color-sage: #b9ccb3;
+  --color-mist: #eef3ea;
+  --color-bark: #5a4636;
+  --color-lichen: #dfe8b6;
+}

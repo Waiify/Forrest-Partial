@@ -8,14 +8,41 @@ const { initializeApp, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const fs = require('fs');
+const registerTransactions = require('./Reports');
 
-console.log("EMAIL_USER:", process.env.EMAIL_USER);
-console.log("EMAIL_PASS exists:", !!process.env.EMAIL_PASS);
+// Which credentials are in use. Custom values (saved from the Admin Settings page) are kept
+// next to the originals in .env, and the admin can switch between the two at any time.
+function hasCustomEmail() {
+  return Boolean(process.env.CUSTOM_EMAIL_USER || process.env.CUSTOM_EMAIL_PASS);
+}
+function usingCustomEmail() {
+  return hasCustomEmail() && process.env.EMAIL_SOURCE !== 'original';
+}
+function getMailAuth() {
+  if (usingCustomEmail()) {
+    return {
+      user: process.env.CUSTOM_EMAIL_USER || process.env.EMAIL_USER,
+      pass: process.env.CUSTOM_EMAIL_PASS || process.env.EMAIL_PASS,
+    };
+  }
+  return { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS };
+}
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-});
+function hasCustomCaptcha() {
+  return Boolean(process.env.CUSTOM_RECAPTCHA_SECRET);
+}
+function usingCustomCaptcha() {
+  return hasCustomCaptcha() && process.env.RECAPTCHA_SOURCE !== 'original';
+}
+function getRecaptchaSecret() {
+  return usingCustomCaptcha() ? process.env.CUSTOM_RECAPTCHA_SECRET : process.env.RECAPTCHA_SECRET;
+}
+
+// Created on every send, so changes apply without restarting the server
+function createTransporter() {
+  return nodemailer.createTransport({ service: 'gmail', auth: getMailAuth() });
+}
 
 initializeApp({
   credential: cert(require('./serviceAccountKey.json')),
@@ -65,7 +92,7 @@ app.get('/api/users', async (req, res) => {
 
 // PUT: update customer profile
 app.put('/api/users/:id', async (req, res) => {
-  
+
   try {
     const { firstName, lastName, username } = req.body;
 
@@ -155,8 +182,6 @@ app.get('/api/staff', async (req, res) => {
 
 // POST: maghimo og bag-ong staff account
 app.post('/api/staff', async (req, res) => {
-  console.log("🔥 LOGIN ROUTE HIT");
-console.log("Login body:", req.body);
   try {
     const { name, email, password } = req.body;
     if (!name || !email || !password || password.length < 8) {
@@ -246,6 +271,12 @@ const Reservation = mongoose.model('Reservation', new mongoose.Schema({
   // Payment tracking (monitored on the admin Reservation page)
   paymentStatus: { type: String, enum: ['Unpaid', 'Paid', 'Refunded'], default: 'Unpaid' },
 }, { timestamps: true }), 'Reservations');
+
+// TRANSACTIONS (admin Transactions page: finance ledger in its own "Transactions" collection)
+// requireAdmin is defined further down; function declarations are hoisted, so this is safe.
+const { recordPaymentChange } = registerTransactions(app, {
+  mongoose, User, Capsule, Reservation, requireAdmin, getSettings,
+});
 
 // GET: ?archived=true|false
 app.get('/api/capsules', async (req, res) => {
@@ -446,19 +477,39 @@ app.patch('/api/reservations/:id', async (req, res) => {
 });
 
 // PATCH: update payment status
+// Also writes a row to the Transactions collection (Payment / Refund / Void) when money moves.
 app.patch('/api/reservations/:id/payment', async (req, res) => {
   try {
-    const { paymentStatus } = req.body;
+    const { paymentStatus, method } = req.body;
     if (!['Unpaid', 'Paid', 'Refunded'].includes(paymentStatus)) {
       return res.status(400).json({ message: 'Invalid payment status' });
     }
-    const update = { paymentStatus };
 
-    const reservation = await Reservation.findByIdAndUpdate(req.params.id, update, {
-      returnDocument: 'after',
-      runValidators: true,
-    });
-    if (!reservation) return res.status(404).json({ message: 'Reservation not found' });
+    const existing = await Reservation.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Reservation not found' });
+
+    const previous = existing.paymentStatus || 'Unpaid';
+    // Only update if the status is still what we just read (stops double clicks from recording twice).
+    // Older documents may have no paymentStatus at all, which counts as Unpaid.
+    const match = previous === 'Unpaid' ? { $in: ['Unpaid', null] } : previous;
+    const reservation = await Reservation.findOneAndUpdate(
+      { _id: existing._id, paymentStatus: match },
+      { paymentStatus },
+      { returnDocument: 'after', runValidators: true }
+    );
+    if (!reservation) {
+      return res.status(409).json({ message: 'The payment was changed already. Refresh and try again.' });
+    }
+
+    if (previous !== paymentStatus) {
+      try {
+        await recordPaymentChange(reservation, previous, paymentStatus, req.get('x-user-id'), method);
+      } catch (ledgerErr) {
+        // The payment status is saved; log the problem so the missing ledger row can be fixed
+        console.error('Could not record transaction for reservation', reservation._id, ledgerErr);
+      }
+    }
+
     res.json(reservation);
   } catch (err) {
     if (err.name === 'ValidationError' || err.name === 'CastError') {
@@ -470,17 +521,21 @@ app.patch('/api/reservations/:id/payment', async (req, res) => {
 });
 
 // SETTINGS (admin Settings page: turn integrations on or off)
-const SETTING_KEYS = ['googleAuthEnabled', 'recaptchaEnabled', 'emailEnabled', 'smsEnabled'];
+// FIX: added 'googleMapsEnabled' and 'pdfExportEnabled' (the Settings and Reports pages depend on them)
+const SETTING_KEYS = ['googleAuthEnabled', 'recaptchaEnabled', 'emailEnabled', 'smsEnabled', 'googleMapsEnabled', 'pdfExportEnabled'];
 
 const Settings = mongoose.model('Settings', new mongoose.Schema({
-  key:              { type: String, default: 'app', unique: true },
+  key:               { type: String, default: 'app', unique: true },
   googleAuthEnabled: { type: Boolean, default: true },
   recaptchaEnabled:  { type: Boolean, default: true },
   emailEnabled:      { type: Boolean, default: true },
   smsEnabled:        { type: Boolean, default: true },
+  googleMapsEnabled: { type: Boolean, default: true },
+  pdfExportEnabled:  { type: Boolean, default: true },
 }, { timestamps: true }), 'Settings');
 
-const pickSettings = (doc) => Object.fromEntries(SETTING_KEYS.map((k) => [k, doc[k]]));
+// A missing value (older settings document) counts as ON
+const pickSettings = (doc) => Object.fromEntries(SETTING_KEYS.map((k) => [k, doc[k] !== false]));
 
 // Returns the settings, creating the document with defaults the first time.
 // If the database call fails, everything counts as ON so security is never weakened by an error.
@@ -514,30 +569,32 @@ async function requireAdmin(req, res, next) {
   }
 }
 
+// Checks the admin code sent in the request body (constant-time comparison)
+function verifyAdminCode(req, res, next) {
+  const expected = process.env.ADMIN_CODE;
+  if (!expected) return res.status(500).json({ message: 'Admin code verification is not configured' });
+  const provided = typeof req.body?.adminCode === 'string' ? Buffer.from(req.body.adminCode) : Buffer.alloc(0);
+  const expectedBuf = Buffer.from(expected);
+  if (provided.length !== expectedBuf.length || !crypto.timingSafeEqual(provided, expectedBuf)) {
+    return res.status(401).json({ message: 'Invalid admin code' });
+  }
+  next();
+}
+
 // GET: public, so the login and signup pages can hide turned-off options
 app.get('/api/settings', async (req, res) => {
-  const settings = await getSettings();
-  res.json(pickSettings(settings));
+  try {
+    const settings = await getSettings();
+    res.json(pickSettings(settings));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Could not load settings' });
+  }
 });
 
 // PATCH: admin only
-app.patch('/api/settings', requireAdmin, async (req, res) => {
+app.patch('/api/settings', requireAdmin, verifyAdminCode, async (req, res) => {
   try {
-    const expectedCode = process.env.ADMIN_CODE;
-    if (!expectedCode) {
-      return res.status(500).json({ message: 'Admin code verification is not configured' });
-    }
-    const providedCode = typeof req.body.adminCode === 'string'
-      ? Buffer.from(req.body.adminCode)
-      : Buffer.alloc(0);
-    const expectedCodeBuffer = Buffer.from(expectedCode);
-    if (
-      providedCode.length !== expectedCodeBuffer.length ||
-      !crypto.timingSafeEqual(providedCode, expectedCodeBuffer)
-    ) {
-      return res.status(401).json({ message: 'Invalid admin code' });
-    }
-
     const update = {};
     for (const key of SETTING_KEYS) {
       if (req.body[key] === undefined) continue;
@@ -558,6 +615,145 @@ app.patch('/api/settings', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Could not update settings' });
+  }
+});
+
+// EMAIL CREDENTIALS (admin Settings page)
+// Originals (EMAIL_USER / EMAIL_PASS) are never touched; edits go to CUSTOM_EMAIL_USER / CUSTOM_EMAIL_PASS.
+const ENV_PATH = __dirname + '/.env';
+
+function quoteEnv(value) {
+  const v = String(value);
+  if (/[\r\n]/.test(v)) throw new Error('Value cannot contain line breaks');
+  for (const q of ['"', "'", '`']) if (!v.includes(q)) return q + v + q;
+  throw new Error('Value cannot contain all three quote types');
+}
+
+function readEnvLines() {
+  try { return fs.readFileSync(ENV_PATH, 'utf8').split(/\r?\n/); } catch { return []; }
+}
+
+function setEnvVar(key, value) {
+  const lines = readEnvLines().filter((l) => !l.startsWith(key + '='));
+  lines.push(`${key}=${quoteEnv(value)}`);
+  fs.writeFileSync(ENV_PATH, lines.join('\n').replace(/\n*$/, '\n'));
+  process.env[key] = String(value);
+}
+
+function removeEnvVar(key) {
+  const lines = readEnvLines().filter((l) => !l.startsWith(key + '='));
+  fs.writeFileSync(ENV_PATH, lines.join('\n').replace(/\n*$/, '\n'));
+  delete process.env[key];
+}
+
+function credentialsPayload() {
+  const mail = getMailAuth();
+  return {
+    user: mail.user || '',
+    source: usingCustomEmail() ? 'custom' : 'original',
+    hasCustom: hasCustomEmail(),
+    passSet: Boolean(mail.pass),
+    recaptcha: {
+      source: usingCustomCaptcha() ? 'custom' : 'original',
+      hasCustom: hasCustomCaptcha(),
+      secretSet: Boolean(getRecaptchaSecret()),
+    },
+  };
+}
+
+// GET: what is currently in effect (passwords and secret keys are not included)
+app.get('/api/settings/credentials', requireAdmin, (req, res) => {
+  res.json(credentialsPayload());
+});
+
+// GET: show one secret on demand (the admin presses "Show" on the page)
+app.get('/api/settings/credentials/reveal', requireAdmin, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const field = req.query.field;
+  if (field === 'emailPass') return res.json({ value: getMailAuth().pass || '' });
+  if (field === 'recaptchaSecret') return res.json({ value: getRecaptchaSecret() || '' });
+  res.status(400).json({ message: 'Unknown field' });
+});
+
+// PUT: switch between the original (.env) and the saved custom credentials. No admin code needed.
+app.put('/api/settings/credentials/source', requireAdmin, (req, res) => {
+  try {
+    const { target, source } = req.body || {};
+    if (!['original', 'custom'].includes(source)) {
+      return res.status(400).json({ message: 'source must be "original" or "custom"' });
+    }
+    if (target === 'email') {
+      if (source === 'custom' && !hasCustomEmail()) {
+        return res.status(400).json({ message: 'No custom email credentials saved yet' });
+      }
+      setEnvVar('EMAIL_SOURCE', source);
+    } else if (target === 'recaptcha') {
+      if (source === 'custom' && !hasCustomCaptcha()) {
+        return res.status(400).json({ message: 'No custom reCAPTCHA secret saved yet' });
+      }
+      setEnvVar('RECAPTCHA_SOURCE', source);
+    } else {
+      return res.status(400).json({ message: 'Unknown target' });
+    }
+    res.json(credentialsPayload());
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Could not switch credentials' });
+  }
+});
+
+// PATCH: save custom values (admin code required). Saving also switches to the custom values.
+app.patch('/api/settings/credentials', requireAdmin, verifyAdminCode, (req, res) => {
+  try {
+    const str = (v) => (typeof v === 'string' ? v.trim() : '');
+    const newUser = str(req.body.CUSTOM_EMAIL_USER);
+    const newPass = typeof req.body.CUSTOM_EMAIL_PASS === 'string' ? req.body.CUSTOM_EMAIL_PASS : '';
+    const newCaptcha = str(req.body.CUSTOM_RECAPTCHA_SECRET);
+
+    const mail = getMailAuth();
+    const userChanged = Boolean(newUser) && newUser !== mail.user;
+    const passChanged = Boolean(newPass) && newPass !== mail.pass;
+    const captchaChanged = Boolean(newCaptcha) && newCaptcha !== getRecaptchaSecret();
+
+    if (!userChanged && !passChanged && !captchaChanged) {
+      return res.status(400).json({ message: 'Nothing to update' });
+    }
+    if (userChanged && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser)) {
+      return res.status(400).json({ message: 'Enter a valid email address' });
+    }
+
+    if (userChanged || passChanged) {
+      // The custom set is always saved as a full pair (email + password)
+      setEnvVar('CUSTOM_EMAIL_USER', userChanged ? newUser : (process.env.CUSTOM_EMAIL_USER || mail.user));
+      setEnvVar('CUSTOM_EMAIL_PASS', passChanged ? newPass : (process.env.CUSTOM_EMAIL_PASS || mail.pass));
+      setEnvVar('EMAIL_SOURCE', 'custom');
+    }
+    if (captchaChanged) {
+      setEnvVar('CUSTOM_RECAPTCHA_SECRET', newCaptcha);
+      setEnvVar('RECAPTCHA_SOURCE', 'custom');
+    }
+
+    res.json(credentialsPayload());
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ message: err.message || 'Could not save credentials' });
+  }
+});
+
+// DELETE: remove the saved custom values for good (body.which: "email" | "recaptcha", otherwise both)
+app.delete('/api/settings/credentials', requireAdmin, verifyAdminCode, (req, res) => {
+  try {
+    const which = req.body?.which;
+    if (which !== 'recaptcha') {
+      ['CUSTOM_EMAIL_USER', 'CUSTOM_EMAIL_PASS', 'EMAIL_SOURCE'].forEach(removeEnvVar);
+    }
+    if (which !== 'email') {
+      ['CUSTOM_RECAPTCHA_SECRET', 'RECAPTCHA_SOURCE'].forEach(removeEnvVar);
+    }
+    res.json(credentialsPayload());
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Could not reset credentials' });
   }
 });
 
@@ -627,7 +823,7 @@ app.post('/verify-captcha', async (req, res) => {
 
   try {
     const params = new URLSearchParams({
-      secret: process.env.RECAPTCHA_SECRET,
+      secret: getRecaptchaSecret(),
       response: token,
     });
     const r = await fetch('https://www.google.com/recaptcha/api/siteverify', {
@@ -787,8 +983,9 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     user.resetTokenExpires = undefined;
     await user.save();
 
-    await transporter.sendMail({
-      from: `"Forrest" <${process.env.EMAIL_USER}>`,
+    const { user: mailUser } = getMailAuth();
+    await createTransporter().sendMail({
+      from: `"Forrest" <${mailUser}>`,
       to: user.email,
       subject: 'Your Forrest password reset code',
       text: `Your verification code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore this email.`,

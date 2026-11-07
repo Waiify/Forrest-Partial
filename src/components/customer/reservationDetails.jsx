@@ -30,7 +30,7 @@ export default function ReservationDetails({
     <div className="space-y-4">
 
       {/* =====================================================
-          BACK BUTTON PARA MAKA BALIK KA
+          BACK BUTTON
       ====================================================== */}
       <button
         type="button"
@@ -42,12 +42,12 @@ export default function ReservationDetails({
       </button>
 
       {/* =====================================================
-          RESERVATION DETAILS CARD PARA AWARE KA
+          RESERVATION DETAILS CARD
       ====================================================== */}
       <div className="rounded-2xl bg-white p-6 shadow-sm">
 
         {/* =================================================
-            HEADER UG STATUS
+            HEADER AND STATUS
         ================================================== */}
         <div className="flex flex-col gap-4 border-b border-[#E4EFE9] pb-5 sm:flex-row sm:items-center sm:justify-between">
 
@@ -93,7 +93,7 @@ export default function ReservationDetails({
         </div>
 
         {/* =================================================
-            DATE UG TIME 
+            DATE AND TIME
         ================================================== */}
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
 
@@ -139,10 +139,13 @@ export default function ReservationDetails({
         </div>
 
         {/* =================================================
-            ACTIONS NGA PWEDE NIMO MA PERFORM
+            ACTIONS
         ================================================== */}
 
-        {reservation.status === "Confirmed" && (
+        {/* PENDING:
+            Reschedule + Cancel
+        */}
+        {reservation.status === "Pending" && (
           <div className="mt-6 flex flex-wrap gap-3 border-t border-[#E4EFE9] pt-5">
 
             {/* RESCHEDULE */}
@@ -155,6 +158,27 @@ export default function ReservationDetails({
             >
               Reschedule
             </button>
+
+            {/* CANCEL */}
+            <button
+              type="button"
+              onClick={() =>
+                onCancel(reservation)
+              }
+              className="inline-flex items-center gap-2 rounded-lg border border-[#E9A8A8] px-4 py-2.5 text-sm font-medium text-[#C0392B] transition hover:bg-[#FDF1F1]"
+            >
+              <X className="h-4 w-4" />
+              Cancel Reservation
+            </button>
+
+          </div>
+        )}
+
+        {/* CONFIRMED:
+            Cancel only
+        */}
+        {reservation.status === "Confirmed" && (
+          <div className="mt-6 flex flex-wrap gap-3 border-t border-[#E4EFE9] pt-5">
 
             {/* CANCEL */}
             <button
@@ -209,19 +233,18 @@ export default function ReservationDetails({
                   className="flex gap-3"
                 >
 
-                  {/* Timeline dot */}
+                  {/* Timeline */}
                   <div className="flex flex-col items-center">
 
                     <div className="mt-1 h-3 w-3 rounded-full bg-[#0B4A2E]" />
 
-                    {index !==
-                      activities.length - 1 && (
+                    {index !== activities.length - 1 && (
                       <div className="mt-1 h-full w-px bg-[#D7E8DF]" />
                     )}
 
                   </div>
 
-                  {/* Activity details */}
+                  {/* Activity Details */}
                   <div className="pb-2">
 
                     <p className="text-sm font-semibold text-[#0B3B2A]">
@@ -254,4 +277,4 @@ export default function ReservationDetails({
 
     </div>
   );
-}
+} 
