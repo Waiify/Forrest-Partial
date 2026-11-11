@@ -310,7 +310,7 @@ export default function Dashboard() {
     if (section === "Settings") return navigate("/settings");
     if (section === "Capsule") return navigate("/capsule");
     if (section === "Reservation") return navigate("/reservation");
-    if (section === "Staff Management" || section === "Management") return navigate("/management");
+    if (section === "User Management" || section === "Staff Management" || section === "Management") return navigate("/management");
     if (section === "Reports" || section === "transactions") return navigate("/reports");
     navigate("/dashboard");
   }

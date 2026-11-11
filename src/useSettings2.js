@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 
-// Set VITE_API_URL in your .env file for deployment (e.g. https://your-api.com/api).
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+// Set VITE_API_URL in your .env file for deployment (e.g. https://your-api.com or https://your-api.com/api).
+const API_ROOT = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
+const API = API_ROOT.endsWith("/api") ? API_ROOT : `${API_ROOT}/api`;
 
 // Everything counts as ON until the server says otherwise. If the request fails,
 // the options stay visible, and the server still blocks anything the admin turned off.
@@ -20,7 +21,7 @@ export default function useSettings() {
 
   useEffect(() => {
     let current = true;
-    fetch(`${API}/settings`)
+    fetch(`${API}/public/settings`)
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Request failed"))))
       .then((data) => current && setSettings({ ...DEFAULTS, ...data, settingsLoaded: true }))
       .catch(() => {

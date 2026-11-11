@@ -93,14 +93,14 @@ export default function Customers() {
     location.pathname === "/staff-management" ||
     location.pathname === "/file-management";
 
-  const active = location.pathname === "/customers" ? "Customers" : isManagementPage ? "Staff Management" : "Dashboard";
+  const active = location.pathname === "/customers" ? "Customers" : isManagementPage ? "User Management" : "Dashboard";
 
   function handleNavigate(section) {
     if (section === "Customers") {
       navigate("/customers");
       return;
     }
-    if (section === "Staff Management" || section === "Management") {
+    if (section === "User Management" || section === "Staff Management" || section === "Management") {
       navigate("/staff-management");
       return;
     }

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { site } from "../LandingConfig";
-
-const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+import { getClientKeys } from "../firebase";
 
 // Load the Google Maps script once, no matter how many times the component mounts.
 let mapsPromise;
@@ -47,15 +46,38 @@ const pinSvg = `
 export default function MapView({ enabled = true, settingsLoaded = true }) {
   const ref = useRef(null);
   const [status, setStatus] = useState("loading");
-  const visibleStatus = !settingsLoaded ? "loading" : !enabled ? "disabled" : !API_KEY ? "nokey" : status;
+  const [apiKey, setApiKey] = useState("");
+  const visibleStatus = !settingsLoaded
+    ? "loading"
+    : !enabled
+      ? "disabled"
+      : status === "error"
+        ? "error"
+        : status === "nokey" || apiKey
+          ? status
+          : "loading";
   const { lat, lng, zoom, address } = site.location;
 
   useEffect(() => {
-    if (!settingsLoaded || !enabled || !API_KEY) return;
     let cancelled = false;
 
-    loadGoogleMaps(API_KEY)
+    if (!settingsLoaded || !enabled) return () => {
+      cancelled = true;
+    };
+
+    getClientKeys()
+      .then(({ googleMapsApiKey }) => {
+        if (!googleMapsApiKey) {
+          setApiKey("");
+          setStatus("nokey");
+          return null;
+        }
+        setApiKey(googleMapsApiKey);
+        setStatus("loading");
+        return loadGoogleMaps(googleMapsApiKey);
+      })
       .then((maps) => {
+        if (!maps) return;
         if (cancelled || !ref.current) return;
         const position = { lat, lng };
 

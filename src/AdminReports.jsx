@@ -7,6 +7,7 @@ import {
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
 import useSettings from "./useSettings2.js";
+import { hasCurrentPermission, readSessionUser } from "./permissionUtils.js";
 
 // FIX: strip a trailing slash and make sure the URL ends in /api
 const RAW_API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
@@ -24,26 +25,9 @@ const TYPE_STYLES = {
 const inputClass =
   "h-10 w-full rounded-lg border border-[#CFE3D9] bg-white px-3 text-sm text-[#0B3B2A] outline-none focus:border-[#2F9E7A] focus:ring-2 focus:ring-[#2F9E7A]/25";
 
-// The server checks that the person is a real admin using the logged-in user's id.
-// FIX: tries several common storage keys. If your login page uses another key, add it to this list.
-const USER_STORAGE_KEYS = ["user", "currentUser", "authUser", "adminUser", "admin", "forrestUser"];
-
 function adminHeaders() {
-  for (const store of [localStorage, sessionStorage]) {
-    for (const key of USER_STORAGE_KEYS) {
-      try {
-        const raw = store.getItem(key);
-        if (!raw) continue;
-        const parsed = JSON.parse(raw);
-        const user = parsed?.user || parsed; // some apps save { user: {...} }
-        const id = user?.id || user?._id;
-        if (id) return { "x-user-id": id };
-      } catch {
-        // not valid JSON, try the next key
-      }
-    }
-  }
-  return {};
+  const token = sessionStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 // FIX: a bare "Failed to fetch" now says what actually went wrong
@@ -175,6 +159,8 @@ export default function AdminReports() {
   const settings = useSettings();
   // FIX: only hidden when explicitly switched off (undefined/missing counts as ON)
   const pdfEnabled = settings?.pdfExportEnabled !== false;
+  const canExport = hasCurrentPermission("reports", "export");
+  const isAdmin = readSessionUser()?.role === "admin";
 
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState({ payments: 0, refunds: 0, voids: 0, net: 0, count: 0 });
@@ -202,7 +188,7 @@ export default function AdminReports() {
     if (section === "Capsule") return navigate("/capsule");
     if (section === "Reservation") return navigate("/reservation");
     if (section === "Reports" || section === "transactions") return navigate("/reports");
-    if (section === "Staff Management" || section === "Management") return navigate("/management");
+    if (section === "User Management" || section === "Staff Management" || section === "Management") return navigate("/management");
     return navigate("/dashboard");
   }
 
@@ -322,7 +308,7 @@ export default function AdminReports() {
                   Every payment, refund, and void, with the full details. Filter the list, then export it as a PDF.
                 </p>
               </div>
-              {pdfEnabled ? (
+              {pdfEnabled && canExport ? (
                 <button
                   type="button"
                   onClick={exportPdf}
@@ -333,7 +319,9 @@ export default function AdminReports() {
                   {exporting ? "Preparing PDF..." : "Export PDF"}
                 </button>
               ) : (
-                <p className="text-sm text-[#6F8E7F]">PDF export is disabled in Settings.</p>
+                <p className="text-sm text-[#6F8E7F]">
+                  {!canExport ? "You do not have permission to export reports." : "PDF export is disabled in Settings."}
+                </p>
               )}
             </div>
 
@@ -522,7 +510,7 @@ export default function AdminReports() {
                               ? "Try changing or clearing the selected filters."
                               : "New transactions appear when a reservation's payment is marked Paid or Refunded."}
                           </p>
-                          {!hasFilters && (
+                          {!hasFilters && isAdmin && (
                             <button
                               type="button"
                               onClick={importExisting}

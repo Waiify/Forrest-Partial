@@ -8,8 +8,23 @@ const { initializeApp, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const registerTransactions = require('./Reports');
+const registerAuditLog = require('./AuditLogs');
+
+const ADMIN_CODE = process.env.ADMIN_CODE || '';
+
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+if (process.env.JWT_SECRET && Buffer.byteLength(process.env.JWT_SECRET) < 32) {
+  throw new Error('JWT_SECRET must be at least 32 bytes');
+}
+if (!process.env.JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET must be configured in production');
+  }
+  console.warn('JWT_SECRET is not configured; login tokens will be invalidated when the server restarts.');
+}
 
 // Which credentials are in use. Custom values (saved from the Admin Settings page) are kept
 // next to the originals in .env, and the admin can switch between the two at any time.
@@ -39,6 +54,18 @@ function getRecaptchaSecret() {
   return usingCustomCaptcha() ? process.env.CUSTOM_RECAPTCHA_SECRET : process.env.RECAPTCHA_SECRET;
 }
 
+function hasCustomGoogleAuthKey() {
+  return Boolean(process.env.CUSTOM_FIREBASE_API_KEY);
+}
+function usingCustomGoogleAuthKey() {
+  return hasCustomGoogleAuthKey() && process.env.FIREBASE_API_KEY_SOURCE !== 'original';
+}
+function getGoogleAuthApiKey() {
+  return usingCustomGoogleAuthKey()
+    ? process.env.CUSTOM_FIREBASE_API_KEY
+    : require('../src/firebase.config.json').apiKey;
+}
+
 // Created on every send, so changes apply without restarting the server
 function createTransporter() {
   return nodemailer.createTransport({ service: 'gmail', auth: getMailAuth() });
@@ -49,6 +76,11 @@ initializeApp({
 });
 
 const app = express();
+const trustedProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+if (!Number.isInteger(trustedProxyHops) || trustedProxyHops < 0) {
+  throw new Error('TRUST_PROXY_HOPS must be a non-negative integer');
+}
+if (trustedProxyHops > 0) app.set('trust proxy', trustedProxyHops);
 app.use(cors());
 app.use(express.json());
 
@@ -65,6 +97,7 @@ const User = mongoose.model('User', new mongoose.Schema({
   password:  { type: String, required: function () { return !this.googleId; } },
   googleId:  { type: String, unique: true, sparse: true },
   role:      { type: String, enum: ['customer', 'staff', 'admin'], default: 'customer' },
+  permissions: { type: mongoose.Schema.Types.Mixed, default: {} },
   resetCodeHash:     { type: String },
   resetCodeExpires:  { type: Date },
   resetAttempts:     { type: Number, default: 0 },
@@ -75,9 +108,164 @@ const User = mongoose.model('User', new mongoose.Schema({
   status:    { type: String, enum: ['active', 'disabled'], default: 'active' },
 }, { timestamps: true }), 'Users');
 
+const SettingsOtpChallenge = mongoose.model('SettingsOtpChallenge', new mongoose.Schema({
+  _id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  codeHash: String,
+  recipientId: String,
+  expiresAt: Date,
+  resendAfter: Date,
+  attempts: { type: Number, default: 0 },
+  locked: { type: Boolean, default: false },
+  proofId: String,
+  proofExpiresAt: Date,
+  proofConsumedAt: Date,
+}, { timestamps: true, collection: 'SettingsOtpChallenges' }));
+SettingsOtpChallenge.schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+const SettingsUnlockSession = mongoose.model('SettingsUnlockSession', new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  tokenId: { type: String, required: true, unique: true },
+  expiresAt: { type: Date, required: true },
+  revokedAt: Date,
+}, { timestamps: true, collection: 'SettingsUnlockSessions' }));
+
+const AdminCodeAttempt = mongoose.model('AdminCodeAttempt', new mongoose.Schema({
+  _id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  attempts: { type: Number, default: 0 },
+  lockedUntil: Date,
+}, { timestamps: true, collection: 'AdminCodeAttempts' }));
+
+async function findTokenUser(req) {
+  const authorization = req.get('authorization') || '';
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
+
+  try {
+    const payload = jwt.verify(match[1], JWT_SECRET);
+    if (!payload || typeof payload !== 'object' || typeof payload.sub !== 'string') return null;
+    const user = await User.findOne({
+      _id: payload.sub,
+      status: { $ne: 'disabled' },
+    }).select('_id role firstName lastName email permissions');
+    if (!user) return null;
+    const staffEmails = new Set(
+      (process.env.STAFF_EMAILS || '')
+        .split(',')
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean)
+    );
+    if (staffEmails.has(user.email.toLowerCase())) user.role = 'staff';
+    return user;
+  } catch (err) {
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') return null;
+    throw err;
+  }
+}
+
+function createLoginToken(user) {
+  return jwt.sign({ sub: String(user._id) }, JWT_SECRET, { expiresIn: '7d' });
+}
+
+async function requireLogin(req, res, next) {
+  try {
+    const user = req.authUser || await findTokenUser(req);
+    if (!user) return res.status(401).json({ message: 'Login required' });
+    req.authUser = user;
+    next();
+  } catch (err) {
+    console.error('Could not verify account:', err);
+    res.status(500).json({ message: 'Could not verify account' });
+  }
+}
+
+function requireStaffOrAdmin(req, res, next) {
+  if (!req.authUser) return res.status(401).json({ message: 'Login required' });
+  if (!['staff', 'admin'].includes(req.authUser.role)) {
+    return res.status(403).json({ message: 'Staff access only' });
+  }
+  next();
+}
+
+const STAFF_PERMISSION_ACTIONS = {
+  dashboard: ['view'],
+  reservations: ['view', 'create', 'update'],
+  spaces: ['view', 'create', 'update', 'delete'],
+  customers: ['view'],
+  reports: ['view', 'export'],
+  auditLogs: ['view'],
+};
+
+const LEGACY_STAFF_PERMISSIONS = {
+  dashboard: ['view'],
+  reservations: ['view', 'create', 'update'],
+  spaces: ['view', 'create', 'update', 'delete'],
+  customers: ['view'],
+};
+
+function hasPermission(user, resource, action) {
+  if (user?.role === 'admin') return true;
+  if (user?.role !== 'staff') return false;
+  const permissions = user.permissions && Object.keys(user.permissions).length
+    ? user.permissions
+    : LEGACY_STAFF_PERMISSIONS;
+  const allowedActions = permissions[resource];
+  if (!Array.isArray(allowedActions) || !allowedActions.includes(action)) return false;
+  if (resource === 'dashboard' && action === 'view') {
+    return Boolean(permissions.reservations?.includes('view') && permissions.spaces?.includes('view'));
+  }
+  if (resource === 'reservations' && action === 'create') {
+    return Boolean(permissions.customers?.includes('view') && permissions.spaces?.includes('view'));
+  }
+  return action === 'view' || allowedActions.includes('view');
+}
+
+function requirePermission(resource, action) {
+  return (req, res, next) => {
+    const user = req.authUser;
+    if (!user) return res.status(401).json({ message: 'Login required' });
+    if (!['admin', 'staff'].includes(user.role)) {
+      return res.status(403).json({ message: 'Staff access only' });
+    }
+    if (!hasPermission(user, resource, action)) {
+      return res.status(403).json({ message: `You do not have permission to ${action} ${resource}` });
+    }
+    next();
+  };
+}
+
+function requireStaffPermission(resource, action) {
+  return (req, res, next) => {
+    if (req.authUser?.role !== 'staff' || hasPermission(req.authUser, resource, action)) {
+      return next();
+    }
+    return res.status(403).json({ message: `You do not have permission to ${action} ${resource}` });
+  };
+}
+
+app.use('/api', async (req, res, next) => {
+  try {
+    req.authUser = await findTokenUser(req);
+    next();
+  } catch (err) {
+    console.error('Could not verify API identity:', err);
+    res.status(500).json({ message: 'Could not verify account' });
+  }
+});
+
+// AUDIT LOG: model, audit() helper, and the endpoints
+//   GET /api/audit-logs/mine  -> the logged-in user's own activity
+//   GET /api/audit-logs       -> everyone's activity (admin only)
+// requireAdmin is defined further down; function declarations are hoisted, so this is safe.
+const { audit } = registerAuditLog(app, {
+  mongoose,
+  User,
+  requireAuditAccess: requirePermission('auditLogs', 'view'),
+  findTokenUser,
+});
+
 
 // CUSTOMERS (para sa Customers page)
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', requireLogin, requireStaffOrAdmin, requireStaffPermission('customers', 'view'), async (req, res) => {
   try {
     const users = await User.find({ role: 'customer' })
       .select('firstName lastName email username createdAt')
@@ -91,9 +279,12 @@ app.get('/api/users', async (req, res) => {
 });
 
 // PUT: update customer profile
-app.put('/api/users/:id', async (req, res) => {
+app.put('/api/users/:id', requireLogin, async (req, res) => {
 
   try {
+    if (req.authUser.role !== 'admin' && String(req.authUser._id) !== req.params.id) {
+      return res.status(403).json({ message: 'You can only update your own profile' });
+    }
     const { firstName, lastName, username } = req.body;
 
     // Basic validation
@@ -115,6 +306,10 @@ app.put('/api/users/:id', async (req, res) => {
       });
     }
 
+    const previousProfile = await User.findById(req.params.id)
+      .select('firstName lastName username')
+      .lean();
+
     // Update customer
     const user = await User.findOneAndUpdate(
       {
@@ -130,13 +325,26 @@ app.put('/api/users/:id', async (req, res) => {
         new: true,
         runValidators: true,
       }
-    ).select('-password');
+    ).select('firstName lastName email username role status createdAt updatedAt');
 
     if (!user) {
       return res.status(404).json({
         message: 'Customer not found',
       });
     }
+
+    // AUDIT
+    const changedFields = [];
+    if (previousProfile && `${previousProfile.firstName} ${previousProfile.lastName}` !== `${user.firstName} ${user.lastName}`) {
+      changedFields.push('name');
+    }
+    if (previousProfile?.username !== user.username) changedFields.push('username');
+    await audit(req, {
+      userId: user._id,
+      action: 'profile.update',
+      description: `Updated ${changedFields.length ? changedFields.join(' and ') : 'profile'}`,
+      metadata: { changedFields },
+    });
 
     res.json({
       message: 'Profile updated successfully',
@@ -170,7 +378,7 @@ const toStaff = (u) => ({
 });
 
 // GET: staff accounts ra (role = staff)
-app.get('/api/staff', async (req, res) => {
+app.get('/api/staff', requireAdmin, async (req, res) => {
   try {
     const staff = await User.find({ role: 'staff' }).sort({ createdAt: -1 });
     res.json(staff.map(toStaff));
@@ -181,7 +389,7 @@ app.get('/api/staff', async (req, res) => {
 });
 
 // POST: maghimo og bag-ong staff account
-app.post('/api/staff', async (req, res) => {
+app.post('/api/staff', requireAdmin, async (req, res) => {
   try {
     const { name, email, password } = req.body;
     if (!name || !email || !password || password.length < 8) {
@@ -211,6 +419,14 @@ app.post('/api/staff', async (req, res) => {
       status: 'active',
     });
 
+    // AUDIT
+    await audit(req, {
+      action: 'staff.create',
+      description: `Created staff account ${lowerEmail}`,
+      entityType: 'user',
+      entityId: user._id,
+    });
+
     res.status(201).json(toStaff(user));
   } catch (err) {
     console.error(err);
@@ -219,7 +435,7 @@ app.post('/api/staff', async (req, res) => {
 });
 
 // PATCH: i-disable o i-enable ang staff (staff accounts ra)
-app.patch('/api/staff/:id', async (req, res) => {
+app.patch('/api/staff/:id', requireAdmin, async (req, res) => {
   try {
     const { status } = req.body;
     if (!['active', 'disabled'].includes(status)) {
@@ -231,10 +447,169 @@ app.patch('/api/staff/:id', async (req, res) => {
       { returnDocument: 'after' }
     );
     if (!user) return res.status(404).json({ message: 'Not found' });
+
+    // AUDIT
+    await audit(req, {
+      action: 'staff.status',
+      description: `Set staff account ${user.email} to ${status}`,
+      entityType: 'user',
+      entityId: user._id,
+    });
+
     res.json(toStaff(user));
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+function normalizeStaffPermissions(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Staff permissions must be an object');
+  }
+  for (const resource of Object.keys(value)) {
+    if (!Object.prototype.hasOwnProperty.call(STAFF_PERMISSION_ACTIONS, resource)) {
+      throw new Error(`Unknown permission area: ${resource}`);
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(STAFF_PERMISSION_ACTIONS).map(([resource, allowedActions]) => {
+      const actions = value[resource] ?? [];
+      if (!Array.isArray(actions) || actions.some((action) => !allowedActions.includes(action))) {
+        throw new Error(`Invalid permissions for ${resource}`);
+      }
+      return [resource, [...new Set(actions)]];
+    })
+  );
+}
+
+function toManagedUser(user) {
+  return {
+    _id: user._id,
+    name: `${user.firstName} ${user.lastName}`.trim(),
+    email: user.email,
+    role: user.role,
+    status: user.status || 'active',
+    permissions: user.role === 'staff' && (!user.permissions || !Object.keys(user.permissions).length)
+      ? LEGACY_STAFF_PERMISSIONS
+      : user.permissions || {},
+    createdAt: user.createdAt,
+  };
+}
+
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const users = await User.find().select('firstName lastName email role status permissions createdAt')
+      .sort({ createdAt: -1 }).lean();
+    res.json(users.map(toManagedUser));
+  } catch (err) {
+    console.error('Could not load managed users:', err);
+    res.status(500).json({ message: 'Could not load users' });
+  }
+});
+
+app.post('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    let firstName = typeof req.body.firstName === 'string' ? req.body.firstName.trim() : '';
+    let lastName = typeof req.body.lastName === 'string' ? req.body.lastName.trim() : '';
+    if (!firstName && !lastName && typeof req.body.name === 'string') {
+      const [legacyFirstName, ...legacyLastName] = req.body.name.trim().split(/\s+/);
+      firstName = legacyFirstName || '';
+      lastName = legacyLastName.join(' ') || '-';
+    }
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    const role = req.body.role;
+    if (!firstName || !lastName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8) {
+      return res.status(400).json({ message: 'First name, last name, a valid email, and a password of at least 8 characters are required' });
+    }
+    if (!['customer', 'staff', 'admin'].includes(role)) {
+      return res.status(400).json({ message: 'Choose a valid account type' });
+    }
+    if (await User.exists({ email })) {
+      return res.status(409).json({ message: 'Email already in use' });
+    }
+    const permissions = role === 'staff' ? normalizeStaffPermissions(req.body.permissions) : {};
+    const usernameBase = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || 'user';
+    let username = usernameBase;
+    let suffix = 0;
+    while (await User.exists({ username })) username = `${usernameBase}${++suffix}`;
+
+    const user = await User.create({
+      firstName,
+      lastName,
+      email,
+      username,
+      password: await bcrypt.hash(password, 10),
+      role,
+      permissions,
+      status: 'active',
+    });
+    await audit(req, {
+      action: 'user.create',
+      description: `Created ${role} account ${email}`,
+      entityType: 'user',
+      entityId: user._id,
+    });
+    res.status(201).json(toManagedUser(user));
+  } catch (err) {
+    if (err.code === 11000) return res.status(409).json({ message: 'Email or username already in use' });
+    if (err.message?.startsWith('Staff permissions') || err.message?.startsWith('Unknown permission') || err.message?.startsWith('Invalid permissions')) {
+      return res.status(400).json({ message: err.message });
+    }
+    console.error('Could not create user:', err);
+    res.status(500).json({ message: 'Could not create account' });
+  }
+});
+
+app.patch('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const update = {};
+    if (req.body.status !== undefined) {
+      if (!['active', 'disabled'].includes(req.body.status)) {
+        return res.status(400).json({ message: 'Invalid status' });
+      }
+      if (req.body.status === 'disabled' && String(user._id) === String(req.authUser._id)) {
+        return res.status(403).json({ message: 'You cannot disable your own account' });
+      }
+      if (user.role === 'admin' && req.body.status === 'disabled') {
+        const activeAdmins = await User.countDocuments({ role: 'admin', status: { $ne: 'disabled' } });
+        if (activeAdmins <= 1) {
+          return res.status(409).json({ message: 'The last active admin account cannot be disabled' });
+        }
+      }
+      update.status = req.body.status;
+    }
+    if (req.body.permissions !== undefined) {
+      if (user.role !== 'staff') {
+        return res.status(400).json({ message: 'Custom permissions can only be assigned to staff accounts' });
+      }
+      update.permissions = normalizeStaffPermissions(req.body.permissions);
+    }
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ message: 'No account changes provided' });
+    }
+    Object.assign(user, update);
+    await user.save();
+    await audit(req, {
+      action: req.body.permissions !== undefined ? 'user.permissions' : 'user.status',
+      description: req.body.permissions !== undefined
+        ? `Updated permissions for ${user.email}`
+        : `Set account ${user.email} to ${user.status}`,
+      entityType: 'user',
+      entityId: user._id,
+    });
+    res.json(toManagedUser(user));
+  } catch (err) {
+    if (err.message?.startsWith('Staff permissions') || err.message?.startsWith('Unknown permission') || err.message?.startsWith('Invalid permissions')) {
+      return res.status(400).json({ message: err.message });
+    }
+    console.error('Could not update user:', err);
+    res.status(500).json({ message: 'Could not update account' });
   }
 });
 
@@ -275,11 +650,20 @@ const Reservation = mongoose.model('Reservation', new mongoose.Schema({
 // TRANSACTIONS (admin Transactions page: finance ledger in its own "Transactions" collection)
 // requireAdmin is defined further down; function declarations are hoisted, so this is safe.
 const { recordPaymentChange } = registerTransactions(app, {
-  mongoose, User, Capsule, Reservation, requireAdmin, getSettings,
+  mongoose,
+  User,
+  Capsule,
+  Reservation,
+  requireAdmin,
+  requirePermission,
+  getSettings,
 });
 
 // GET: ?archived=true|false
 app.get('/api/capsules', async (req, res) => {
+  if (req.authUser?.role === 'staff' && !hasPermission(req.authUser, 'spaces', 'view')) {
+    return res.status(403).json({ message: 'You do not have permission to view spaces' });
+  }
   try {
     const archived = req.query.archived === 'true';
     const filter = archived ? { isArchived: true } : { isArchived: { $ne: true } };
@@ -291,9 +675,10 @@ app.get('/api/capsules', async (req, res) => {
   }
 });
 
-app.get('/api/reservations', async (req, res) => {
+app.get('/api/reservations', requireLogin, requireStaffPermission('reservations', 'view'), async (req, res) => {
   try {
-    const reservations = await Reservation.find().sort({ startAt: 1, createdAt: -1 }).lean();
+    const filter = req.authUser.role === 'customer' ? { customerId: req.authUser._id } : {};
+    const reservations = await Reservation.find(filter).sort({ startAt: 1, createdAt: -1 }).lean();
     res.json(reservations);
   } catch (err) {
     console.error(err);
@@ -303,11 +688,14 @@ app.get('/api/reservations', async (req, res) => {
 
 // GET: one customer's own reservations (customer "My Reservations" page)
 // Usage: /api/reservations/mine?customerId=<user id>
-app.get('/api/reservations/mine', async (req, res) => {
+app.get('/api/reservations/mine', requireLogin, requireStaffPermission('reservations', 'view'), async (req, res) => {
   try {
     const { customerId } = req.query;
     if (!mongoose.Types.ObjectId.isValid(customerId)) {
       return res.status(400).json({ message: 'A valid customerId is required' });
+    }
+    if (req.authUser.role === 'customer' && String(req.authUser._id) !== String(customerId)) {
+      return res.status(403).json({ message: 'You can only view your own reservations' });
     }
     const reservations = await Reservation.find({ customerId }).sort({ startAt: 1 }).lean();
     res.json(reservations);
@@ -339,7 +727,7 @@ app.get('/api/availability', async (req, res) => {
   }
 });
 
-app.post('/api/reservations', async (req, res) => {
+app.post('/api/reservations', requireLogin, requireStaffPermission('reservations', 'create'), async (req, res) => {
   try {
     const { customerId, capsuleId, startAt, durationHours, status } = req.body;
     const hours = Number(durationHours);
@@ -356,6 +744,12 @@ app.post('/api/reservations', async (req, res) => {
       !['Pending', 'Confirmed'].includes(status || 'Pending')
     ) {
       return res.status(400).json({ message: 'Enter a customer, capsule, valid start time, and duration from 0.5 to 24 hours.' });
+    }
+    if (req.authUser.role === 'customer' && String(req.authUser._id) !== customerId) {
+      return res.status(403).json({ message: 'You can only book for your own account' });
+    }
+    if (req.authUser.role === 'customer' && status && status !== 'Pending') {
+      return res.status(403).json({ message: 'Customer bookings must start as pending' });
     }
 
     const customer = await User.findOne({ _id: customerId, role: 'customer', status: { $ne: 'disabled' } })
@@ -390,6 +784,16 @@ app.post('/api/reservations', async (req, res) => {
       status: status || 'Pending',
     });
 
+    // AUDIT
+    await audit(req, {
+      userId: customer._id,
+      action: 'reservation.create',
+      description: `Booked capsule ${reservation.capsuleId} for ${hours}h`,
+      entityType: 'reservation',
+      entityId: reservation._id,
+      metadata: { startAt: start, durationHours: hours, totalPrice: reservation.totalPrice },
+    });
+
     res.status(201).json(reservation);
   } catch (err) {
     if (err.name === 'ValidationError') return res.status(400).json({ message: err.message });
@@ -399,7 +803,7 @@ app.post('/api/reservations', async (req, res) => {
 });
 
 // PATCH: change a reservation's status and/or reschedule it (new startAt and/or durationHours)
-app.patch('/api/reservations/:id', async (req, res) => {
+app.patch('/api/reservations/:id', requireLogin, requireStaffPermission('reservations', 'update'), async (req, res) => {
   try {
     const { status, startAt, durationHours } = req.body;
     const allowedStatuses = ['Pending', 'Confirmed', 'Checked in', 'Completed', 'Cancelled'];
@@ -415,6 +819,15 @@ app.patch('/api/reservations/:id', async (req, res) => {
 
     const reservation = await Reservation.findById(req.params.id);
     if (!reservation) return res.status(404).json({ message: 'Reservation not found' });
+    const isCustomerOwner = req.authUser.role === 'customer'
+      && String(req.authUser._id) === String(reservation.customerId);
+    const canManage = ['staff', 'admin'].includes(req.authUser.role);
+    if (!isCustomerOwner && !canManage) {
+      return res.status(403).json({ message: 'You cannot update this reservation' });
+    }
+    if (req.authUser.role === 'customer' && status && status !== 'Cancelled') {
+      return res.status(403).json({ message: 'Customers may only cancel their reservation' });
+    }
 
     const nextStatus = status ?? reservation.status;
     let nextStart = reservation.startAt;
@@ -458,6 +871,7 @@ app.patch('/api/reservations/:id', async (req, res) => {
       }
     }
 
+    const previousStatus = reservation.status; // AUDIT: remember the old status
     reservation.status = nextStatus;
     if (rescheduling) {
       reservation.startAt = nextStart;
@@ -466,6 +880,29 @@ app.patch('/api/reservations/:id', async (req, res) => {
       reservation.totalPrice = Number((reservation.pricePerHour * nextHours).toFixed(2));
     }
     await reservation.save();
+
+    // AUDIT (logged under the customer who owns the reservation)
+    if (rescheduling) {
+      await audit(req, {
+        userId: reservation.customerId,
+        action: 'reservation.reschedule',
+        description: `Rescheduled reservation for capsule ${reservation.capsuleId}`,
+        entityType: 'reservation',
+        entityId: reservation._id,
+        metadata: { startAt: nextStart, durationHours: nextHours },
+      });
+    }
+    if (previousStatus !== nextStatus) {
+      await audit(req, {
+        userId: reservation.customerId,
+        action: 'reservation.status',
+        description: `Reservation for capsule ${reservation.capsuleId} changed from ${previousStatus} to ${nextStatus}`,
+        entityType: 'reservation',
+        entityId: reservation._id,
+        metadata: { from: previousStatus, to: nextStatus },
+      });
+    }
+
     res.json(reservation);
   } catch (err) {
     if (err.name === 'ValidationError' || err.name === 'CastError') {
@@ -478,7 +915,7 @@ app.patch('/api/reservations/:id', async (req, res) => {
 
 // PATCH: update payment status
 // Also writes a row to the Transactions collection (Payment / Refund / Void) when money moves.
-app.patch('/api/reservations/:id/payment', async (req, res) => {
+app.patch('/api/reservations/:id/payment', requireLogin, requireStaffOrAdmin, requirePermission('reservations', 'update'), async (req, res) => {
   try {
     const { paymentStatus, method } = req.body;
     if (!['Unpaid', 'Paid', 'Refunded'].includes(paymentStatus)) {
@@ -502,8 +939,18 @@ app.patch('/api/reservations/:id/payment', async (req, res) => {
     }
 
     if (previous !== paymentStatus) {
+      // AUDIT (logged under the customer who owns the reservation)
+      await audit(req, {
+        userId: reservation.customerId,
+        action: `payment.${paymentStatus.toLowerCase()}`,
+        description: `Payment marked ${paymentStatus} (was ${previous}) for capsule ${reservation.capsuleId}`,
+        entityType: 'reservation',
+        entityId: reservation._id,
+        metadata: { amount: reservation.totalPrice, method },
+      });
+
       try {
-        await recordPaymentChange(reservation, previous, paymentStatus, req.get('x-user-id'), method);
+        await recordPaymentChange(reservation, previous, paymentStatus, String(req.authUser._id), method);
       } catch (ledgerErr) {
         // The payment status is saved; log the problem so the missing ledger row can be fixed
         console.error('Could not record transaction for reservation', reservation._id, ledgerErr);
@@ -553,15 +1000,12 @@ async function getSettings() {
 }
 
 // Only a real, enabled admin account may change settings.
-// The admin page sends the logged-in user's id in the x-user-id header.
 async function requireAdmin(req, res, next) {
   try {
-    const id = req.get('x-user-id');
-    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(401).json({ message: 'Admin login required' });
-    }
-    const admin = await User.findOne({ _id: id, role: 'admin', status: { $ne: 'disabled' } }).select('_id');
-    if (!admin) return res.status(403).json({ message: 'Admin access only' });
+    const user = req.authUser || await findTokenUser(req);
+    if (!user) return res.status(401).json({ message: 'Admin login required' });
+    if (user.role !== 'admin') return res.status(403).json({ message: 'Admin access only' });
+    req.authUser = user;
     next();
   } catch (err) {
     console.error(err);
@@ -569,20 +1013,442 @@ async function requireAdmin(req, res, next) {
   }
 }
 
-// Checks the admin code sent in the request body (constant-time comparison)
-function verifyAdminCode(req, res, next) {
-  const expected = process.env.ADMIN_CODE;
-  if (!expected) return res.status(500).json({ message: 'Admin code verification is not configured' });
-  const provided = typeof req.body?.adminCode === 'string' ? Buffer.from(req.body.adminCode) : Buffer.alloc(0);
-  const expectedBuf = Buffer.from(expected);
-  if (provided.length !== expectedBuf.length || !crypto.timingSafeEqual(provided, expectedBuf)) {
-    return res.status(401).json({ message: 'Invalid admin code' });
+async function checkAdminCode(req, userId, provided, failureAction = 'settings.admin_code_failed') {
+  if (!ADMIN_CODE) {
+    return { status: 500, message: 'Admin code is not configured (set ADMIN_CODE)' };
   }
-  next();
+  const attempt = await AdminCodeAttempt.findById(userId);
+  if (attempt?.lockedUntil && attempt.lockedUntil > new Date()) {
+    return { status: 423, message: 'Admin code is temporarily locked. Try again later.' };
+  }
+
+  const providedBuffer = typeof provided === 'string' ? Buffer.from(provided) : Buffer.alloc(0);
+  const adminCodeBuffer = Buffer.from(ADMIN_CODE);
+  const valid = providedBuffer.length === adminCodeBuffer.length
+    && crypto.timingSafeEqual(providedBuffer, adminCodeBuffer);
+  if (valid) {
+    await AdminCodeAttempt.findByIdAndUpdate(
+      userId,
+      { $set: { attempts: 0, lockedUntil: null } },
+      { upsert: true }
+    );
+    return null;
+  }
+
+  const updated = await AdminCodeAttempt.findByIdAndUpdate(
+    userId,
+    { $inc: { attempts: 1 } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  const isLocked = updated.attempts >= 5;
+  if (isLocked) {
+    await AdminCodeAttempt.findByIdAndUpdate(userId, {
+      $set: { lockedUntil: new Date(Date.now() + 15 * 60 * 1000) },
+    });
+  }
+  await audit(req, {
+    userId,
+    action: isLocked ? 'settings.admin_code_locked' : failureAction,
+    description: isLocked
+      ? 'Admin code locked after repeated failed attempts'
+      : 'Incorrect admin code',
+  });
+  return {
+    status: isLocked ? 423 : 401,
+    message: isLocked
+      ? 'Admin code is temporarily locked after repeated failed attempts.'
+      : 'Invalid admin code',
+  };
 }
 
-// GET: public, so the login and signup pages can hide turned-off options
-app.get('/api/settings', async (req, res) => {
+async function verifyAdminCode(req, res, next) {
+  try {
+    const failure = await checkAdminCode(req, String(req.authUser._id), req.body?.adminCode);
+    if (failure) return res.status(failure.status).json({ message: failure.message });
+    next();
+  } catch (err) {
+    console.error('Could not verify admin code:', err);
+    res.status(500).json({ message: 'Could not verify admin code' });
+  }
+}
+
+function readSettingsUnlockClaims(req, ignoreExpiration = false) {
+  const token = req.get('x-settings-unlock-token') || '';
+  if (!token) return null;
+  try {
+    const claims = jwt.verify(token, JWT_SECRET, { ignoreExpiration });
+    if (
+      typeof claims !== 'object' ||
+      claims.purpose !== 'settings-unlock' ||
+      typeof claims.sub !== 'string' ||
+      typeof claims.jti !== 'string'
+    ) return null;
+    return claims;
+  } catch (err) {
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') return null;
+    throw err;
+  }
+}
+
+function requireSettingsUnlock(req, res, next) {
+  requireAdmin(req, res, () => {
+    (async () => {
+      const claims = readSettingsUnlockClaims(req);
+      if (!claims || claims.sub !== String(req.authUser._id)) {
+        return res.status(423).json({ message: 'Settings session is locked or expired' });
+      }
+      const session = await SettingsUnlockSession.findOne({
+        userId: req.authUser._id,
+        tokenId: claims.jti,
+        revokedAt: null,
+        expiresAt: { $gt: new Date() },
+      });
+      if (!session) return res.status(423).json({ message: 'Settings session is locked or expired' });
+      req.settingsUnlock = session;
+      next();
+    })().catch((err) => {
+      console.error('Could not verify settings unlock:', err);
+      res.status(500).json({ message: 'Could not verify Settings session' });
+    });
+  });
+}
+
+function developerOtpRecipients() {
+  const configured = (process.env.DEVELOPER_OTP_EMAILS || '')
+    .split(',')
+    .map((email) => email.trim())
+    .filter(Boolean);
+  if (!configured.length || configured.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    return null;
+  }
+  return configured;
+}
+
+function maskEmail(email) {
+  const [local, domain] = email.split('@');
+  return `${local[0]}***@${domain}`;
+}
+
+function otpHash(userId, code) {
+  return crypto.createHmac('sha256', JWT_SECRET).update(`${userId}:${code}`).digest('hex');
+}
+
+async function sendSettingsOtp(email, code) {
+  const original = { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS };
+  const custom = { user: process.env.CUSTOM_EMAIL_USER, pass: process.env.CUSTOM_EMAIL_PASS };
+  const accounts = [custom, original].filter(
+    (account, index, list) =>
+      account.user && account.pass &&
+      list.findIndex((other) => other.user === account.user && other.pass === account.pass) === index
+  );
+  if (!accounts.length) throw new Error('Original email credentials are not configured');
+
+  let lastError;
+  for (const account of accounts) {
+    try {
+      const transporter = nodemailer.createTransport({ service: 'gmail', auth: account });
+      await transporter.sendMail({
+        from: account.user,
+        to: email,
+        subject: 'Settings verification code',
+        text: `Your Settings verification code is ${code}. It expires in 5 minutes. If you did not request it, ignore this email.`,
+      });
+      return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('Could not send Settings verification email');
+}
+
+app.get('/api/settings/unlock/recipients', requireAdmin, (req, res) => {
+  const recipients = developerOtpRecipients();
+  if (!recipients) {
+    return res.status(503).json({ message: 'DEVELOPER_OTP_EMAILS is missing or invalid on the server' });
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json({ recipients: recipients.map((email, index) => ({ id: String(index), masked: maskEmail(email) })) });
+});
+
+app.get('/api/settings/unlock/status', requireAdmin, async (req, res) => {
+  try {
+    const claims = readSettingsUnlockClaims(req);
+    if (!claims || claims.sub !== String(req.authUser._id)) {
+      const expiredClaims = readSettingsUnlockClaims(req, true);
+      if (expiredClaims?.sub === String(req.authUser._id)) {
+        const expiredSession = await SettingsUnlockSession.findOneAndUpdate(
+          {
+            userId: req.authUser._id,
+            tokenId: expiredClaims.jti,
+            revokedAt: null,
+            expiresAt: { $lte: new Date() },
+          },
+          { $set: { revokedAt: new Date() } },
+          { new: true }
+        );
+        if (expiredSession) {
+          await audit(req, { action: 'settings.lock', description: 'Settings session expired' });
+        }
+      }
+      return res.json({ unlocked: false });
+    }
+    const session = await SettingsUnlockSession.findOne({
+      userId: req.authUser._id,
+      tokenId: claims.jti,
+      revokedAt: null,
+      expiresAt: { $gt: new Date() },
+    });
+    res.set('Cache-Control', 'no-store');
+    res.json(session ? { unlocked: true, expiresAt: session.expiresAt } : { unlocked: false });
+  } catch (err) {
+    console.error('Could not load Settings unlock status:', err);
+    res.status(500).json({ message: 'Could not load Settings session' });
+  }
+});
+
+app.post('/api/settings/unlock/otp/send', requireAdmin, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const recipients = developerOtpRecipients();
+  if (!recipients) {
+    return res.status(503).json({ message: 'DEVELOPER_OTP_EMAILS is missing or invalid on the server' });
+  }
+  const recipientId = typeof req.body?.recipientId === 'string' ? req.body.recipientId : '';
+  const recipientIndex = Number(recipientId);
+  if (
+    !/^\d+$/.test(recipientId) ||
+    !Number.isSafeInteger(recipientIndex) ||
+    String(recipientIndex) !== recipientId ||
+    !recipients[recipientIndex]
+  ) {
+    return res.status(400).json({ message: 'Choose a configured developer recipient' });
+  }
+
+  const now = new Date();
+  const userId = req.authUser._id;
+  try {
+    const existing = await SettingsOtpChallenge.findById(userId);
+    if (existing?.resendAfter && existing.resendAfter > now) {
+      const retryAfterSeconds = Math.ceil((existing.resendAfter - now) / 1000);
+      return res.status(429).json({ message: 'Please wait before requesting another code', retryAfterSeconds });
+    }
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+    const challengeFilter = existing
+      ? { _id: userId, resendAfter: { $lte: now } }
+      : { _id: userId };
+    const challenge = await SettingsOtpChallenge.findOneAndUpdate(
+      challengeFilter,
+      {
+        $set: {
+          codeHash: otpHash(userId, code),
+          recipientId,
+          expiresAt,
+          resendAfter: new Date(now.getTime() + 60 * 1000),
+          attempts: 0,
+          locked: false,
+          proofId: null,
+          proofExpiresAt: null,
+          proofConsumedAt: null,
+        },
+      },
+      { upsert: !existing, new: true, setDefaultsOnInsert: true }
+    );
+    if (!challenge) {
+      return res.status(429).json({ message: 'Please wait before requesting another code', retryAfterSeconds: 60 });
+    }
+
+    try {
+      await sendSettingsOtp(recipients[recipientIndex], code);
+    } catch (err) {
+      await SettingsOtpChallenge.findByIdAndUpdate(userId, { $set: { codeHash: null } });
+      await audit(req, {
+        action: 'settings.otp_failed',
+        description: 'Could not send Settings verification code',
+      });
+      console.error('Settings verification email failed:', err.message);
+      return res.status(502).json({
+        message: 'Could not send the verification email. Try again after 60 seconds.',
+        retryAfterSeconds: 60,
+      });
+    }
+
+    await audit(req, {
+      action: 'settings.otp_sent',
+      description: `Sent Settings verification code to developer recipient ${recipientIndex + 1}`,
+    });
+    res.json({ message: 'Verification code sent', retryAfterSeconds: 60 });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(429).json({ message: 'Please wait before requesting another code', retryAfterSeconds: 60 });
+    }
+    console.error('Could not create Settings OTP:', err);
+    res.status(500).json({ message: 'Could not send verification code' });
+  }
+});
+
+app.post('/api/settings/unlock/otp/verify', requireAdmin, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const userId = req.authUser._id;
+  const code = typeof req.body?.code === 'string' ? req.body.code : '';
+  try {
+    const challenge = await SettingsOtpChallenge.findById(userId);
+    const now = new Date();
+    if (challenge?.locked) {
+      await audit(req, { action: 'settings.otp_failed', description: 'Verification code rejected: challenge locked' });
+      return res.status(423).json({ message: 'Verification code is locked. Request a new code after the resend wait.' });
+    }
+
+    const expectedHash = challenge?.codeHash || '';
+    const actualHash = /^\d{6}$/.test(code) ? otpHash(userId, code) : '';
+    const matches = Boolean(
+      challenge &&
+      expectedHash &&
+      challenge.expiresAt > now &&
+      actualHash &&
+      crypto.timingSafeEqual(Buffer.from(expectedHash, 'hex'), Buffer.from(actualHash, 'hex'))
+    );
+    if (!matches) {
+      const updatedChallenge = challenge
+        ? await SettingsOtpChallenge.findByIdAndUpdate(
+          userId,
+          { $inc: { attempts: 1 } },
+          { new: true }
+        )
+        : null;
+      const attempts = updatedChallenge?.attempts || 1;
+      const locked = attempts >= 5;
+      if (challenge) {
+        if (locked) {
+          await SettingsOtpChallenge.findByIdAndUpdate(userId, { $set: { locked: true } });
+        }
+      }
+      await audit(req, {
+        action: 'settings.otp_failed',
+        description: 'Incorrect or expired Settings verification code',
+      });
+      if (locked) {
+        await audit(req, {
+          action: 'settings.otp_locked',
+          description: 'Settings verification code locked after five failed attempts',
+        });
+        return res.status(423).json({ message: 'Too many incorrect codes. Request a new code after the resend wait.' });
+      }
+      return res.status(401).json({ message: 'Invalid or expired verification code', attemptsRemaining: Math.max(0, 5 - attempts) });
+    }
+
+    const proofId = crypto.randomUUID();
+    const proofExpiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+    const consumed = await SettingsOtpChallenge.findOneAndUpdate(
+      { _id: userId, codeHash: expectedHash, expiresAt: { $gt: now }, locked: false },
+      {
+        $set: {
+          codeHash: null,
+          proofId,
+          proofExpiresAt,
+          proofConsumedAt: null,
+          expiresAt: proofExpiresAt,
+        },
+      },
+      { new: true }
+    );
+    if (!consumed) {
+      await audit(req, { action: 'settings.otp_failed', description: 'Verification code was already used or expired' });
+      return res.status(401).json({ message: 'Verification code is no longer valid. Request a new code.' });
+    }
+    const otpProof = jwt.sign(
+      { sub: String(userId), purpose: 'settings-otp-verified', jti: proofId },
+      JWT_SECRET,
+      { expiresIn: '5m' }
+    );
+    res.json({ otpProof });
+  } catch (err) {
+    console.error('Could not verify Settings OTP:', err);
+    res.status(500).json({ message: 'Could not verify the code' });
+  }
+});
+
+app.post('/api/settings/unlock/complete', requireAdmin, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const userId = req.authUser._id;
+  try {
+    const proofToken = typeof req.body?.otpProof === 'string' ? req.body.otpProof : '';
+    let proof;
+    try {
+      proof = jwt.verify(proofToken, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ message: 'Verification code step expired. Request a new code.' });
+    }
+    if (
+      typeof proof !== 'object' ||
+      proof.purpose !== 'settings-otp-verified' ||
+      proof.sub !== String(userId) ||
+      typeof proof.jti !== 'string'
+    ) {
+      return res.status(401).json({ message: 'Invalid verification session' });
+    }
+
+    const codeFailure = await checkAdminCode(req, String(userId), req.body?.adminCode);
+    if (codeFailure) return res.status(codeFailure.status).json({ message: codeFailure.message });
+
+    const now = new Date();
+    const consumedProof = await SettingsOtpChallenge.findOneAndUpdate(
+      {
+        _id: userId,
+        proofId: proof.jti,
+        proofConsumedAt: null,
+        proofExpiresAt: { $gt: now },
+      },
+      { $set: { proofConsumedAt: now } },
+      { new: true }
+    );
+    if (!consumedProof) {
+      return res.status(401).json({ message: 'Verification session was already used or expired' });
+    }
+
+    const tokenId = crypto.randomUUID();
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+    await SettingsUnlockSession.create({ userId, tokenId, expiresAt });
+    const unlockToken = jwt.sign(
+      { sub: String(userId), purpose: 'settings-unlock', jti: tokenId },
+      JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+    await audit(req, { action: 'settings.unlock', description: 'Unlocked Settings for 15 minutes' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ unlockToken, expiresAt });
+  } catch (err) {
+    console.error('Could not unlock Settings:', err);
+    res.status(500).json({ message: 'Could not unlock Settings' });
+  }
+});
+
+app.post('/api/settings/unlock/lock', requireAdmin, async (req, res) => {
+  try {
+    const claims = readSettingsUnlockClaims(req, true);
+    if (claims && claims.sub === String(req.authUser._id)) {
+      const session = await SettingsUnlockSession.findOneAndUpdate(
+        { userId: req.authUser._id, tokenId: claims.jti, revokedAt: null },
+        { $set: { revokedAt: new Date() } },
+        { new: true }
+      );
+      if (session) {
+        const expired = claims.exp && claims.exp * 1000 <= Date.now();
+        await audit(req, {
+          action: 'settings.lock',
+          description: expired ? 'Settings session expired' : 'Locked Settings session',
+        });
+      }
+    }
+    res.json({ locked: true });
+  } catch (err) {
+    console.error('Could not lock Settings:', err);
+    res.status(500).json({ message: 'Could not lock Settings' });
+  }
+});
+
+// Public pages only receive on/off flags needed to hide disabled integrations.
+app.get('/api/public/settings', async (req, res) => {
   try {
     const settings = await getSettings();
     res.json(pickSettings(settings));
@@ -592,8 +1458,19 @@ app.get('/api/settings', async (req, res) => {
   }
 });
 
-// PATCH: admin only
-app.patch('/api/settings', requireAdmin, verifyAdminCode, async (req, res) => {
+app.get('/api/settings', requireSettingsUnlock, async (req, res) => {
+  try {
+    const settings = await getSettings();
+    res.set('Cache-Control', 'no-store');
+    res.json(pickSettings(settings));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Could not load settings' });
+  }
+});
+
+// PATCH: only an unlocked admin may change integration settings.
+app.patch('/api/settings', requireSettingsUnlock, async (req, res) => {
   try {
     const update = {};
     for (const key of SETTING_KEYS) {
@@ -611,6 +1488,15 @@ app.patch('/api/settings', requireAdmin, verifyAdminCode, async (req, res) => {
       { $set: update },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
+
+    for (const [key, value] of Object.entries(update)) {
+      await audit(req, {
+        action: 'settings.toggle',
+        description: `Turned ${key} ${value ? 'on' : 'off'}`,
+        metadata: { setting: key, enabled: value },
+      });
+    }
+
     res.json(pickSettings(settings));
   } catch (err) {
     console.error(err);
@@ -646,8 +1532,39 @@ function removeEnvVar(key) {
   delete process.env[key];
 }
 
+function getOriginalGoogleMapsApiKey() {
+  if (process.env.VITE_GOOGLE_MAPS_API_KEY) return process.env.VITE_GOOGLE_MAPS_API_KEY;
+  try {
+    const rootEnv = require('dotenv').parse(fs.readFileSync(__dirname + '/../.env'));
+    return rootEnv.VITE_GOOGLE_MAPS_API_KEY || '';
+  } catch (err) {
+    if (err.code === 'ENOENT') return '';
+    throw err;
+  }
+}
+
+function hasCustomGoogleMapsKey() {
+  return Boolean(process.env.CUSTOM_GOOGLE_MAPS_API_KEY);
+}
+function usingCustomGoogleMapsKey() {
+  return hasCustomGoogleMapsKey() && process.env.GOOGLE_MAPS_API_KEY_SOURCE !== 'original';
+}
+function getGoogleMapsApiKey() {
+  return usingCustomGoogleMapsKey()
+    ? process.env.CUSTOM_GOOGLE_MAPS_API_KEY
+    : getOriginalGoogleMapsApiKey();
+}
+
+function maskedKeyPreview(key) {
+  const visibleLength = Math.ceil(key.length / 2);
+  return key ? key.slice(0, visibleLength) + '•'.repeat(key.length - visibleLength) : '';
+}
+
 function credentialsPayload() {
   const mail = getMailAuth();
+  const recaptchaSecret = getRecaptchaSecret() || '';
+  const googleMapsApiKey = getGoogleMapsApiKey();
+  const googleAuthApiKey = getGoogleAuthApiKey();
   return {
     user: mail.user || '',
     source: usingCustomEmail() ? 'custom' : 'original',
@@ -656,27 +1573,54 @@ function credentialsPayload() {
     recaptcha: {
       source: usingCustomCaptcha() ? 'custom' : 'original',
       hasCustom: hasCustomCaptcha(),
-      secretSet: Boolean(getRecaptchaSecret()),
+      secretSet: Boolean(recaptchaSecret),
+      preview: maskedKeyPreview(recaptchaSecret),
+    },
+    googleMaps: {
+      source: usingCustomGoogleMapsKey() ? 'custom' : 'original',
+      hasCustom: hasCustomGoogleMapsKey(),
+      keySet: Boolean(googleMapsApiKey),
+      preview: maskedKeyPreview(googleMapsApiKey),
+    },
+    googleAuth: {
+      source: usingCustomGoogleAuthKey() ? 'custom' : 'original',
+      hasCustom: hasCustomGoogleAuthKey(),
+      keySet: Boolean(googleAuthApiKey),
+      preview: maskedKeyPreview(googleAuthApiKey),
     },
   };
 }
 
-// GET: what is currently in effect (passwords and secret keys are not included)
-app.get('/api/settings/credentials', requireAdmin, (req, res) => {
+// Client API keys are required by the browser SDKs; they are public identifiers, not secrets.
+app.get('/api/client-keys', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    googleAuthApiKey: getGoogleAuthApiKey(),
+    googleMapsApiKey: getGoogleMapsApiKey(),
+  });
+});
+
+// GET: credential metadata and masked key previews
+app.get('/api/settings/credentials', requireSettingsUnlock, (req, res) => {
+  res.set('Cache-Control', 'no-store');
   res.json(credentialsPayload());
 });
 
-// GET: show one secret on demand (the admin presses "Show" on the page)
-app.get('/api/settings/credentials/reveal', requireAdmin, (req, res) => {
+// GET: reveal the email password on demand.
+app.get('/api/settings/credentials/reveal', requireSettingsUnlock, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const field = req.query.field;
-  if (field === 'emailPass') return res.json({ value: getMailAuth().pass || '' });
-  if (field === 'recaptchaSecret') return res.json({ value: getRecaptchaSecret() || '' });
-  res.status(400).json({ message: 'Unknown field' });
+  if (field !== 'emailPass') return res.status(400).json({ message: 'Unknown field' });
+  // AUDIT: record that a secret was viewed (never the secret itself)
+  await audit(req, {
+    action: 'settings.credentials_reveal',
+    description: 'Viewed email password',
+  });
+  return res.json({ value: getMailAuth().pass || '' });
 });
 
 // PUT: switch between the original (.env) and the saved custom credentials. No admin code needed.
-app.put('/api/settings/credentials/source', requireAdmin, (req, res) => {
+app.put('/api/settings/credentials/source', requireSettingsUnlock, async (req, res) => {
   try {
     const { target, source } = req.body || {};
     if (!['original', 'custom'].includes(source)) {
@@ -692,9 +1636,26 @@ app.put('/api/settings/credentials/source', requireAdmin, (req, res) => {
         return res.status(400).json({ message: 'No custom reCAPTCHA secret saved yet' });
       }
       setEnvVar('RECAPTCHA_SOURCE', source);
+    } else if (target === 'googleAuth') {
+      if (source === 'custom' && !hasCustomGoogleAuthKey()) {
+        return res.status(400).json({ message: 'No custom Firebase API key saved yet' });
+      }
+      setEnvVar('FIREBASE_API_KEY_SOURCE', source);
+    } else if (target === 'googleMaps') {
+      if (source === 'custom' && !hasCustomGoogleMapsKey()) {
+        return res.status(400).json({ message: 'No custom Google Maps API key saved yet' });
+      }
+      setEnvVar('GOOGLE_MAPS_API_KEY_SOURCE', source);
     } else {
       return res.status(400).json({ message: 'Unknown target' });
     }
+
+    // AUDIT
+    await audit(req, {
+      action: 'settings.credentials_switch',
+      description: `Switched ${target} credentials to ${source}`,
+    });
+
     res.json(credentialsPayload());
   } catch (err) {
     console.error(err);
@@ -703,19 +1664,25 @@ app.put('/api/settings/credentials/source', requireAdmin, (req, res) => {
 });
 
 // PATCH: save custom values (admin code required). Saving also switches to the custom values.
-app.patch('/api/settings/credentials', requireAdmin, verifyAdminCode, (req, res) => {
+app.patch('/api/settings/credentials', requireSettingsUnlock, verifyAdminCode, async (req, res) => {
   try {
     const str = (v) => (typeof v === 'string' ? v.trim() : '');
     const newUser = str(req.body.CUSTOM_EMAIL_USER);
     const newPass = typeof req.body.CUSTOM_EMAIL_PASS === 'string' ? req.body.CUSTOM_EMAIL_PASS : '';
     const newCaptcha = str(req.body.CUSTOM_RECAPTCHA_SECRET);
+    const newFirebaseApiKey = str(req.body.CUSTOM_FIREBASE_API_KEY);
+    const newMapsApiKey = str(req.body.CUSTOM_GOOGLE_MAPS_API_KEY);
 
     const mail = getMailAuth();
     const userChanged = Boolean(newUser) && newUser !== mail.user;
     const passChanged = Boolean(newPass) && newPass !== mail.pass;
     const captchaChanged = Boolean(newCaptcha) && newCaptcha !== getRecaptchaSecret();
+    const firebaseApiKeyChanged = Boolean(newFirebaseApiKey) &&
+      newFirebaseApiKey !== process.env.CUSTOM_FIREBASE_API_KEY;
+    const mapsApiKeyChanged = Boolean(newMapsApiKey) &&
+      newMapsApiKey !== process.env.CUSTOM_GOOGLE_MAPS_API_KEY;
 
-    if (!userChanged && !passChanged && !captchaChanged) {
+    if (!userChanged && !passChanged && !captchaChanged && !firebaseApiKeyChanged && !mapsApiKeyChanged) {
       return res.status(400).json({ message: 'Nothing to update' });
     }
     if (userChanged && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser)) {
@@ -732,6 +1699,27 @@ app.patch('/api/settings/credentials', requireAdmin, verifyAdminCode, (req, res)
       setEnvVar('CUSTOM_RECAPTCHA_SECRET', newCaptcha);
       setEnvVar('RECAPTCHA_SOURCE', 'custom');
     }
+    if (firebaseApiKeyChanged) {
+      setEnvVar('CUSTOM_FIREBASE_API_KEY', newFirebaseApiKey);
+      setEnvVar('FIREBASE_API_KEY_SOURCE', 'custom');
+    }
+    if (mapsApiKeyChanged) {
+      setEnvVar('CUSTOM_GOOGLE_MAPS_API_KEY', newMapsApiKey);
+      setEnvVar('GOOGLE_MAPS_API_KEY_SOURCE', 'custom');
+    }
+
+    // AUDIT (says what changed, never the values)
+    const changed = [
+      userChanged && 'email address',
+      passChanged && 'email password',
+      captchaChanged && 'reCAPTCHA secret',
+      firebaseApiKeyChanged && 'Firebase API key',
+      mapsApiKeyChanged && 'Google Maps API key',
+    ].filter(Boolean);
+    await audit(req, {
+      action: 'settings.credentials_update',
+      description: `Updated credentials: ${changed.join(', ')}`,
+    });
 
     res.json(credentialsPayload());
   } catch (err) {
@@ -741,7 +1729,7 @@ app.patch('/api/settings/credentials', requireAdmin, verifyAdminCode, (req, res)
 });
 
 // DELETE: remove the saved custom values for good (body.which: "email" | "recaptcha", otherwise both)
-app.delete('/api/settings/credentials', requireAdmin, verifyAdminCode, (req, res) => {
+app.delete('/api/settings/credentials', requireSettingsUnlock, verifyAdminCode, async (req, res) => {
   try {
     const which = req.body?.which;
     if (which !== 'recaptcha') {
@@ -750,6 +1738,13 @@ app.delete('/api/settings/credentials', requireAdmin, verifyAdminCode, (req, res
     if (which !== 'email') {
       ['CUSTOM_RECAPTCHA_SECRET', 'RECAPTCHA_SOURCE'].forEach(removeEnvVar);
     }
+
+    // AUDIT
+    await audit(req, {
+      action: 'settings.credentials_delete',
+      description: `Removed custom credentials: ${which || 'email and reCAPTCHA'}`,
+    });
+
     res.json(credentialsPayload());
   } catch (err) {
     console.error(err);
@@ -758,7 +1753,7 @@ app.delete('/api/settings/credentials', requireAdmin, verifyAdminCode, (req, res
 });
 
 // POST: maghimo og bag-ong capsule
-app.post('/api/capsules', async (req, res) => {
+app.post('/api/capsules', requireLogin, requireStaffOrAdmin, requirePermission('spaces', 'create'), async (req, res) => {
   try {
     const { capsuleId, capsuleName, room, type, pricePerHour, status } = req.body;
     if (!capsuleId || !capsuleName || pricePerHour == null) {
@@ -770,6 +1765,13 @@ app.post('/api/capsules', async (req, res) => {
     const capsule = await Capsule.create({
       capsuleId, capsuleName, room, type, pricePerHour: Number(pricePerHour), status,
     });
+    await audit(req, {
+      action: 'capsule.create',
+      description: `Created capsule ${capsule.capsuleId}`,
+      entityType: 'capsule',
+      entityId: capsule._id,
+      metadata: { capsuleName: capsule.capsuleName, room: capsule.room, type: capsule.type, pricePerHour: capsule.pricePerHour },
+    });
     res.status(201).json(capsule);
   } catch (err) {
     if (err.name === 'ValidationError') return res.status(400).json({ message: err.message });
@@ -779,7 +1781,7 @@ app.post('/api/capsules', async (req, res) => {
 });
 
 // PUT: i-edit ang capsule
-app.put('/api/capsules/:id', async (req, res) => {
+app.put('/api/capsules/:id', requireLogin, requireStaffOrAdmin, requirePermission('spaces', 'update'), async (req, res) => {
   try {
     const { capsuleName, room, type, pricePerHour, status } = req.body;
     const capsule = await Capsule.findOneAndUpdate(
@@ -788,6 +1790,13 @@ app.put('/api/capsules/:id', async (req, res) => {
       { returnDocument: 'after', runValidators: true }
     );
     if (!capsule) return res.status(404).json({ message: 'Capsule not found' });
+    await audit(req, {
+      action: 'capsule.update',
+      description: `Updated capsule ${capsule.capsuleId}`,
+      entityType: 'capsule',
+      entityId: capsule._id,
+      metadata: { capsuleName: capsule.capsuleName, room: capsule.room, type: capsule.type, pricePerHour: capsule.pricePerHour, status: capsule.status },
+    });
     res.json(capsule);
   } catch (err) {
     if (err.name === 'ValidationError') return res.status(400).json({ message: err.message });
@@ -805,14 +1814,20 @@ async function setArchived(req, res, value) {
       { returnDocument: 'after' }
     );
     if (!capsule) return res.status(404).json({ message: 'Capsule not found' });
+    await audit(req, {
+      action: value ? 'capsule.archive' : 'capsule.restore',
+      description: `${value ? 'Archived' : 'Restored'} capsule ${capsule.capsuleId}`,
+      entityType: 'capsule',
+      entityId: capsule._id,
+    });
     res.json(capsule);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Request failed' });
   }
 }
-app.patch('/api/capsules/:id/archive', (req, res) => setArchived(req, res, true));
-app.patch('/api/capsules/:id/restore', (req, res) => setArchived(req, res, false));
+app.patch('/api/capsules/:id/archive', requireLogin, requireStaffOrAdmin, requirePermission('spaces', 'delete'), (req, res) => setArchived(req, res, true));
+app.patch('/api/capsules/:id/restore', requireLogin, requireStaffOrAdmin, requirePermission('spaces', 'delete'), (req, res) => setArchived(req, res, false));
 
 
 // reCAPTCHA
@@ -839,6 +1854,19 @@ app.post('/verify-captcha', async (req, res) => {
 });
 
 // AUTH
+app.post('/api/auth/logout', requireLogin, async (req, res) => {
+  const now = new Date();
+  const revoked = await SettingsUnlockSession.updateMany(
+    { userId: req.authUser._id, revokedAt: null },
+    { $set: { revokedAt: now } }
+  );
+  if (revoked.modifiedCount > 0) {
+    await audit(req, { action: 'settings.lock', description: 'Locked Settings session on logout' });
+  }
+  await audit(req, { action: 'auth.logout', description: 'Logged out' });
+  res.json({ message: 'Logged out' });
+});
+
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { firstName, lastName, email, username, password } = req.body;
@@ -851,7 +1879,10 @@ app.post('/api/auth/signup', async (req, res) => {
     if (exists) return res.status(409).json({ message: 'Email or username already in use' });
 
     const hashed = await bcrypt.hash(password, 10);
-    await User.create({ firstName, lastName, email, username, password: hashed });
+    const created = await User.create({ firstName, lastName, email, username, password: hashed });
+
+    // AUDIT
+    await audit(req, { userId: created._id, action: 'auth.signup', description: 'Account created' });
 
     res.status(201).json({ message: 'Account created' });
   } catch (err) {
@@ -869,10 +1900,25 @@ app.post('/api/auth/login', async (req, res) => {
     const user = await User.findOne({ email: normalizedEmail });
     const ok = user && user.password && await bcrypt.compare(password, user.password);
 
-    if (!ok) return res.status(401).json({ message: 'Invalid email or password' });
+    if (!ok) {
+      // AUDIT: failed attempt on a real account (shows up in that user's own log)
+      if (user) {
+        await audit(req, {
+          userId: user._id,
+          action: 'auth.login_failed',
+          description: 'Failed login attempt (wrong password)',
+        });
+      }
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
 
     // Dili makasulod ang disabled nga account
     if (user.status === 'disabled') {
+      await audit(req, {
+        userId: user._id,
+        action: 'auth.login_blocked',
+        description: 'Login blocked: account is disabled',
+      });
       return res.status(403).json({ message: 'This account has been disabled' });
     }
 
@@ -887,12 +1933,15 @@ app.post('/api/auth/login', async (req, res) => {
     // Admin: kinahanglan pa gihapon ang admin code
     if (role === 'admin') {
       if (!adminCode) return res.json({ requiresAdminCode: true });
-      if (adminCode !== process.env.ADMIN_CODE) {
-        return res.status(401).json({ message: 'Invalid admin code' });
-      }
+      const codeFailure = await checkAdminCode(req, String(user._id), adminCode, 'auth.admin_code_failed');
+      if (codeFailure) return res.status(codeFailure.status).json({ message: codeFailure.message });
     }
 
+    // AUDIT
+    await audit(req, { userId: user._id, action: 'auth.login', description: `Logged in as ${role}` });
+
     res.json({
+      token: createLoginToken(user),
       user: {
         id: user._id,
         firstName: user.firstName,
@@ -900,6 +1949,9 @@ app.post('/api/auth/login', async (req, res) => {
         email: user.email,
         username: user.username,
         role,
+        permissions: role === 'staff' && user.permissions && Object.keys(user.permissions).length
+          ? user.permissions
+          : role === 'staff' ? LEGACY_STAFF_PERMISSIONS : {},
       },
     });
   } catch (err) {
@@ -918,6 +1970,7 @@ app.post('/api/auth/google-sync', async (req, res) => {
 
     const email = decoded.email.toLowerCase();
     let user = await User.findOne({ email });
+    let isNewUser = false;
 
     if (!user) {
       const base = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || 'user';
@@ -931,6 +1984,7 @@ app.post('/api/auth/google-sync', async (req, res) => {
         username,
         googleId: decoded.uid,
       });
+      isNewUser = true;
     } else if (!user.googleId) {
       user.googleId = decoded.uid;
       await user.save();
@@ -943,10 +1997,22 @@ app.post('/api/auth/google-sync', async (req, res) => {
 
     // Dili makasulod ang disabled nga account
     if (user.status === 'disabled') {
+      await audit(req, {
+        userId: user._id,
+        action: 'auth.login_blocked',
+        description: 'Google login blocked: account is disabled',
+      });
       return res.status(403).json({ message: 'This account has been disabled' });
     }
 
+    // AUDIT
+    if (isNewUser) {
+      await audit(req, { userId: user._id, action: 'auth.signup', description: 'Account created with Google' });
+    }
+    await audit(req, { userId: user._id, action: 'auth.login', description: 'Logged in with Google' });
+
     res.json({
+      token: createLoginToken(user),
       user: {
         id: user._id,
         firstName: user.firstName,
@@ -983,6 +2049,13 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     user.resetTokenExpires = undefined;
     await user.save();
 
+    // AUDIT
+    await audit(req, {
+      userId: user._id,
+      action: 'auth.password_reset_requested',
+      description: 'Requested a password reset code',
+    });
+
     const { user: mailUser } = getMailAuth();
     await createTransporter().sendMail({
       from: `"Forrest" <${mailUser}>`,
@@ -1016,6 +2089,12 @@ app.post('/api/auth/verify-reset-code', async (req, res) => {
     if (!ok) {
       user.resetAttempts += 1;
       await user.save();
+      // AUDIT
+      await audit(req, {
+        userId: user._id,
+        action: 'auth.reset_code_failed',
+        description: 'Entered a wrong password reset code',
+      });
       return invalid();
     }
 
@@ -1056,6 +2135,13 @@ app.post('/api/auth/reset-password', async (req, res) => {
     user.resetTokenExpires = undefined;
     user.resetAttempts = 0;
     await user.save();
+
+    // AUDIT
+    await audit(req, {
+      userId: user._id,
+      action: 'auth.password_changed',
+      description: 'Password changed using a reset code',
+    });
 
     res.json({ message: 'Password updated' });
   } catch (err) {

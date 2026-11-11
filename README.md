@@ -1,16 +1,32 @@
-# React + Vite
+# Forrest Study Hub
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Run locally
 
-Currently, two official plugins are available:
+Install the frontend dependencies:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```sh
+npm install
+```
 
-## React Compiler
+Start the API in one terminal:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```sh
+npm run server
+```
 
-## Expanding the ESLint configuration
+Start the Vite website in another terminal:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```sh
+npm run dev
+```
+
+The website is served at `http://localhost:5173` and the API at `http://localhost:5000`. The API requires its MongoDB settings and a stable, random `JWT_SECRET` in `server/.env`, plus the Firebase Admin service-account file at `server/serviceAccountKey.json`. Generate a secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. In development, the API can start without it, but login tokens will stop working after a backend restart. If deployed behind a trusted reverse proxy, set `TRUST_PROXY_HOPS` to the number of proxy hops so audit logs can record the visitor's IP.
+
+Settings access requires an admin login, a one-time code sent to an address from the comma-separated `DEVELOPER_OTP_EMAILS` allowlist in `server/.env`, and the admin code. OTP delivery tries the custom email account first and falls back to the original `EMAIL_USER` / `EMAIL_PASS` credentials, independent of the Email integration toggle. The unlock lasts 15 minutes. Set `ADMIN_CODE` directly in `server/.env`; it is stored as plain text, so protect that file and do not commit it.
+
+## Checks
+
+```sh
+npm run build
+npm run lint
+```

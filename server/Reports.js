@@ -41,7 +41,15 @@ const METHODS = ['Cash', 'GCash', 'Card', 'Bank Transfer', 'Other'];
 const MAX_EXPORT_ROWS = 5000;
 const API_PREFIXES = ['/api/reports', '/api/transactions'];
 
-module.exports = function registerTransactions(app, { mongoose, User, Capsule, Reservation, requireAdmin, getSettings }) {
+module.exports = function registerTransactions(app, {
+  mongoose,
+  User,
+  Capsule,
+  Reservation,
+  requireAdmin,
+  requirePermission,
+  getSettings,
+}) {
   // ---------- MODELS ----------
   const transactionSchema = new mongoose.Schema({
     transactionNo: { type: String, required: true, unique: true },
@@ -178,7 +186,7 @@ module.exports = function registerTransactions(app, { mongoose, User, Capsule, R
 
   // ---------- ROUTES (admin only) ----------
   // GET /api/transactions?page=1&limit=20&from&to&type&method&search
-  registerRoute('get', '', requireAdmin, async (req, res) => {
+  registerRoute('get', '', requirePermission('reports', 'view'), async (req, res) => {
     try {
       const filter = buildFilter(req.query);
       const page = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -198,7 +206,7 @@ module.exports = function registerTransactions(app, { mongoose, User, Capsule, R
   });
 
   // GET /api/transactions/summary  (same filters, totals across ALL matching rows, not just one page)
-  registerRoute('get', '/summary', requireAdmin, async (req, res) => {
+  registerRoute('get', '/summary', requirePermission('reports', 'view'), async (req, res) => {
     try {
       res.json(await summarize(buildFilter(req.query)));
     } catch (err) {
@@ -207,7 +215,7 @@ module.exports = function registerTransactions(app, { mongoose, User, Capsule, R
   });
 
   // GET /api/transactions/export  -> PDF download (same filters)
-  registerRoute('get', '/export', requireAdmin, async (req, res) => {
+  registerRoute('get', '/export', requirePermission('reports', 'export'), async (req, res) => {
     try {
       // Only blocked when it was explicitly switched off (a missing value counts as ON)
       if ((await getSettings()).pdfExportEnabled === false) {
@@ -223,7 +231,7 @@ module.exports = function registerTransactions(app, { mongoose, User, Capsule, R
         throw httpError(413, `Too many rows (${count}). Narrow the date range to ${MAX_EXPORT_ROWS} or fewer.`);
       }
 
-      const adminId = req.get('x-user-id');
+      const adminId = String(req.authUser._id);
       const [summary, admin] = await Promise.all([
         summarize(filter),
         User.findById(adminId).select('firstName lastName email').lean(),
@@ -251,7 +259,7 @@ module.exports = function registerTransactions(app, { mongoose, User, Capsule, R
   // that were marked Paid/Refunded BEFORE this feature existed. Safe to run again.
   registerRoute('post', '/backfill', requireAdmin, async (req, res) => {
     try {
-      const adminId = req.get('x-user-id');
+      const adminId = String(req.authUser._id);
       const reservations = await Reservation.find({ paymentStatus: { $in: ['Paid', 'Refunded'] } }).lean();
       let created = 0;
       for (const r of reservations) {
@@ -284,13 +292,20 @@ module.exports = function registerTransactions(app, { mongoose, User, Capsule, R
   // ---------- PDF (pdfmake) ----------
   const php = (n) => `₱${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const signed = (tx) => `${tx.type === 'Payment' ? '+' : '-'}${php(tx.amount)}`;
+  const manila = { timeZone: 'Asia/Manila' };
   const stamp = (d) => new Date(d).toLocaleString('en-PH', {
-    timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    ...manila, year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
+  const dateOnly = (d) => new Date(d).toLocaleDateString('en-PH', { ...manila, year: 'numeric', month: 'short', day: 'numeric' });
+  const timeOnly = (d) => new Date(d).toLocaleTimeString('en-PH', { ...manila, hour: 'numeric', minute: '2-digit' });
 
   function buildPdf({ rows, summary, admin, query }) {
-    const GREEN = '#0B3B2A', MUTED = '#6F8E7F', TEXT = '#315D49';
-    const TYPE_COLOR = { Payment: '#0B7A4B', Refund: '#7E3FB5', Void: '#B42318' };
+    // Brand colours: change these in one place to restyle the whole report
+    const NAVY = '#0B3B2A', ACCENT = '#2F9E7A', MUTED = '#6B7F75', TEXT = '#1F3A2E';
+    const LINE = '#DCEBE3', CARD = '#F3F9F5', ZEBRA = '#FAFCFB';
+    const TYPE_COLOR = { Payment: '#15803D', Refund: '#7E3FB5', Void: '#B42318' };
+    const MARGIN = 36;
+    const generatedAt = stamp(new Date());
 
     const filterBits = [];
     if (query.from || query.to) {
@@ -302,96 +317,133 @@ module.exports = function registerTransactions(app, { mongoose, User, Capsule, R
     const adminName = admin ? `${admin.firstName} ${admin.lastName}`.trim() : 'Unknown';
 
     const stats = [
-      ['Payments received', php(summary.payments)],
-      ['Refunds', php(summary.refunds)],
-      ['Voids', php(summary.voids)],
-      ['Net revenue', php(summary.net)],
-      ['Transactions', String(summary.count)],
+      ['PAYMENTS RECEIVED', php(summary.payments), '#15803D'],
+      ['REFUNDS', php(summary.refunds), NAVY],
+      ['VOIDS', php(summary.voids), NAVY],
+      ['NET REVENUE', php(summary.net), ACCENT],
+      ['TRANSACTIONS', String(summary.count), NAVY],
     ];
 
-    const header = ['Transaction no.', 'Date & time', 'Customer', 'Capsule', 'Type', 'Method', 'Note', 'Amount'].map(
-      (label) => ({
-        text: label, bold: true, fontSize: 8, color: GREEN,
-        alignment: label === 'Amount' ? 'right' : 'left',
-      })
-    );
-
+    const th = (label) => ({
+      text: label, bold: true, fontSize: 8, color: '#FFFFFF',
+      alignment: label === 'Amount' ? 'right' : 'left',
+    });
     const body = [
-      header,
+      ['Transaction no.', 'Date & time', 'Customer', 'Capsule', 'Type', 'Method', 'Note', 'Amount'].map(th),
       ...rows.map((tx) => [
-        { text: tx.transactionNo, fontSize: 8, color: TEXT },
-        { text: stamp(tx.createdAt), fontSize: 8, color: TEXT },
-        {
-          stack: [
-            { text: tx.guestName || '-', bold: true, fontSize: 8, color: GREEN },
-            { text: tx.guestEmail || '', fontSize: 7, color: MUTED },
-          ],
-        },
+        { text: tx.transactionNo, bold: true, fontSize: 8, color: TEXT },
+        { stack: [
+          { text: dateOnly(tx.createdAt), fontSize: 8, color: TEXT },
+          { text: timeOnly(tx.createdAt), fontSize: 7, color: MUTED },
+        ] },
+        { stack: [
+          { text: tx.guestName || '-', fontSize: 8, color: TEXT },
+          { text: tx.guestEmail || '', fontSize: 7, color: MUTED },
+        ] },
         { text: tx.capsuleName || tx.capsuleId || '-', fontSize: 8, color: TEXT },
-        { text: tx.type, bold: true, fontSize: 8, color: TYPE_COLOR[tx.type] },
+        { text: tx.type, fontSize: 8, color: TYPE_COLOR[tx.type] },
         { text: tx.method || '-', fontSize: 8, color: TEXT },
-        { text: tx.note || '-', fontSize: 7, color: TEXT },
+        { text: tx.note || '-', fontSize: 7.5, color: TEXT },
         { text: signed(tx), bold: true, fontSize: 8, color: TYPE_COLOR[tx.type], alignment: 'right' },
       ]),
+      // Total row
+      [
+        { text: 'NET TOTAL', bold: true, fontSize: 8.5, color: NAVY, colSpan: 7 },
+        {}, {}, {}, {}, {}, {},
+        { text: php(summary.net), bold: true, fontSize: 10, color: NAVY, alignment: 'right' },
+      ],
     ];
+    const lastRow = body.length - 1;
 
     const docDefinition = {
       pageSize: 'A4',
       pageOrientation: 'landscape',
-      pageMargins: [36, 36, 36, 48],
+      pageMargins: [MARGIN, 62, MARGIN, 48],
       info: { title: 'Financial transactions report', author: 'Forrest co-working space' },
-      defaultStyle: { font: 'Roboto', fontSize: 8 },
+      defaultStyle: { font: 'Roboto', fontSize: 8, color: TEXT },
+
+      // Coloured band at the top of every page
+      background: (currentPage, pageSize) => ({
+        canvas: [
+          { type: 'rect', x: 0, y: 0, w: pageSize.width, h: 40, color: NAVY },
+          { type: 'rect', x: 0, y: 0, w: 14, h: 40, color: ACCENT },
+        ],
+      }),
+      header: {
+        margin: [MARGIN, 14, MARGIN, 0],
+        columns: [
+          { text: 'FORREST CO-WORKING SPACE', bold: true, fontSize: 11, color: '#FFFFFF' },
+          { text: 'Financial Transactions Report', alignment: 'right', fontSize: 8.5, color: '#FFFFFF', margin: [0, 2, 0, 0] },
+        ],
+      },
+
+      // Footer on every page, with "Page X of Y"
+      footer: (currentPage, pageCount, pageSize) => ({
+        margin: [MARGIN, 8, MARGIN, 0],
+        stack: [
+          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: pageSize.width - MARGIN * 2, y2: 0, lineWidth: 0.6, lineColor: LINE }] },
+          {
+            margin: [0, 6, 0, 0],
+            columns: [
+              { text: 'Confidential - for admin use only. Do not distribute.', color: MUTED, fontSize: 7.5, width: '*' },
+              { text: `Forrest co-working space  |  Generated ${generatedAt}`, color: MUTED, fontSize: 7.5, alignment: 'center', width: '*' },
+              { text: `Page ${currentPage} of ${pageCount}`, bold: true, color: MUTED, fontSize: 7.5, alignment: 'right', width: '*' },
+            ],
+          },
+        ],
+      }),
+
       content: [
-        { text: 'Forrest co-working space', fontSize: 16, bold: true, color: GREEN },
-        { text: 'Financial transactions report', fontSize: 11, color: TEXT, margin: [0, 2, 0, 6] },
-        { text: `Generated ${stamp(new Date())}  |  Exported by ${adminName}`, fontSize: 8, color: MUTED },
+        { text: 'Financial transactions report', fontSize: 18, bold: true, color: NAVY },
         {
-          text: filterBits.length ? filterBits.join('  |  ') : 'Filters: none (all transactions)',
-          fontSize: 8, color: MUTED,
+          text: `Generated ${generatedAt}  •  Exported by: ${adminName}  •  ${
+            filterBits.length ? filterBits.join('  •  ') : 'Filters: none (all transactions)'
+          }`,
+          fontSize: 8.5, color: MUTED, margin: [0, 3, 0, 12],
         },
         {
-          margin: [0, 12, 0, 14],
+          // Summary cards (white vertical lines act as gaps between the cards)
+          margin: [0, 0, 0, 14],
           table: {
             widths: stats.map(() => '*'),
             body: [
-              stats.map(([label, value]) => ({
+              stats.map(([label, value, color]) => ({
                 stack: [
-                  { text: label, fontSize: 8, color: MUTED },
-                  { text: value, fontSize: 12, bold: true, color: GREEN, margin: [0, 2, 0, 0] },
+                  { text: label, fontSize: 7, color: MUTED },
+                  { text: value, fontSize: 13, bold: true, color, margin: [0, 3, 0, 0] },
                 ],
               })),
             ],
           },
           layout: {
-            fillColor: () => '#F3F9F5',
-            hLineColor: () => '#DCEBE3',
-            vLineColor: () => '#DCEBE3',
-            paddingLeft: () => 8, paddingRight: () => 8, paddingTop: () => 6, paddingBottom: () => 6,
+            fillColor: () => CARD,
+            hLineWidth: (i) => (i === 0 ? 2 : 0),
+            hLineColor: () => ACCENT,
+            vLineWidth: (i) => (i === 0 || i === stats.length ? 0 : 8),
+            vLineColor: () => '#FFFFFF',
+            paddingLeft: () => 10, paddingRight: () => 10, paddingTop: () => 8, paddingBottom: () => 8,
           },
         },
         {
           table: {
-            headerRows: 1, // repeats on every page
+            headerRows: 1, // header repeats on every page
             dontBreakRows: true,
-            widths: [100, 95, '*', 70, 50, 70, 110, 90],
+            widths: [102, 62, '*', 62, 46, 48, 100, 84],
             body,
           },
           layout: {
-            fillColor: (i) => (i === 0 ? '#EAF4EE' : i % 2 === 0 ? '#F9FBFA' : null),
-            hLineWidth: () => 0.5,
+            fillColor: (i) => {
+              if (i === 0) return NAVY;
+              if (i === lastRow) return CARD;
+              return i % 2 === 0 ? ZEBRA : null;
+            },
+            hLineWidth: (i) => (i === lastRow ? 1.2 : i === 0 || i === 1 ? 0 : 0.4),
+            hLineColor: (i) => (i === lastRow ? NAVY : LINE),
             vLineWidth: () => 0,
-            hLineColor: () => '#E6EFE9',
-            paddingTop: () => 5, paddingBottom: () => 5,
+            paddingLeft: () => 6, paddingRight: () => 6, paddingTop: () => 6, paddingBottom: () => 6,
           },
         },
       ],
-      footer: (currentPage, pageCount) => ({
-        margin: [36, 12, 36, 0],
-        columns: [
-          { text: 'Confidential - for admin use only', color: MUTED, fontSize: 8 },
-          { text: `Page ${currentPage} of ${pageCount}`, alignment: 'right', color: MUTED, fontSize: 8 },
-        ],
-      }),
     };
 
     return pdfmake.createPdf(docDefinition).getBuffer().then((buffer) => Buffer.from(buffer));

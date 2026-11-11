@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Eye, EyeOff, User, Mail, Lock } from 'lucide-react'
 import { signInWithPopup } from 'firebase/auth'
-import { auth, googleProvider } from './firebase'
+import { getFirebaseAuth, googleProvider } from './firebase'
 import { useNavigate } from 'react-router-dom'
 import useSettings from './useSettings2'
 import backgroundImage from './assets/page_background.jpg'
@@ -68,7 +68,7 @@ function CustomerSignUp() {
     setStatus({ loading: true, error: '', success: '' })
 
     try {
-      const result = await signInWithPopup(auth, googleProvider)
+      const result = await signInWithPopup(await getFirebaseAuth(), googleProvider)
       const idToken = await result.user.getIdToken()
 
       const res = await fetch('http://localhost:5000/api/auth/google-sync', {

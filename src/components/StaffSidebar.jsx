@@ -5,15 +5,18 @@ import {
   FileText,
   History,
   ClipboardList,
+  Users,
+  BarChart3,
+  ShieldCheck,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import logo from "../assets/logo.jpg";
+import { readSessionUser, userHasPermission } from "../permissionUtils.js";
 
-// The ids stay the same, so the routes in your pages keep working.
-// Only the section titles and labels changed to match the design.
 const NAV_SECTIONS = [
   {
     title: "OVERVIEW",
-    items: [{ id: "Dashboard", label: "Dashboard", icon: LayoutDashboard }],
+    items: [{ id: "Dashboard", label: "Dashboard", icon: LayoutDashboard, permission: ["dashboard", "view"] }],
   },
   {
     title: "Forrest Spaces and Services",
@@ -22,19 +25,29 @@ const NAV_SECTIONS = [
         id: "StaffSpacesandServicesManagement",
         label: "Spaces and Services Management",
         icon: Briefcase,
+        permission: ["spaces", "view"],
       },
       {
         id: "StaffSpacesandServicesAvailability",
         label: "Spaces and Services Availability",
         icon: Clock,
+        permission: ["spaces", "view"],
       },
     ],
   },
   {
     title: "RESERVATION",
     items: [
-      { id: "StaffReservation", label: "Reservation", icon: FileText },
-      { id: "StaffReservationHistory", label: "Reservation History", icon: History },
+      { id: "StaffReservation", label: "Reservation", icon: FileText, permission: ["reservations", "view"] },
+      { id: "StaffReservationHistory", label: "Reservation History", icon: History, permission: ["reservations", "view"] },
+    ],
+  },
+  {
+    title: "MANAGEMENT",
+    items: [
+      { id: "Customers", label: "Customers", icon: Users, permission: ["customers", "view"], path: "/customers" },
+      { id: "Reports", label: "Reports", icon: BarChart3, permission: ["reports", "view"], path: "/reports" },
+      { id: "Audit Logs", label: "Audit Logs", icon: ShieldCheck, permission: ["auditLogs", "view"], path: "/audit-logs" },
     ],
   },
   {
@@ -44,6 +57,13 @@ const NAV_SECTIONS = [
 ];
 
 export default function StaffSidebar({ active, onNavigate }) {
+  const navigate = useNavigate();
+  const user = readSessionUser();
+  const sections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter(({ permission }) => !permission || userHasPermission(user, ...permission)),
+  })).filter((section) => section.items.length > 0);
+
   return (
     <aside className="flex w-60 shrink-0 flex-col bg-[#003F22] text-white">
       <div className="flex h-16 items-center gap-2 px-5">
@@ -63,20 +83,20 @@ export default function StaffSidebar({ active, onNavigate }) {
       </div>
 
       <nav className="flex-1 space-y-4 px-3 py-2">
-        {NAV_SECTIONS.map(({ title, items }) => (
+        {sections.map(({ title, items }) => (
           <div key={title}>
             <div className="px-3 pb-1 text-[13px] font-semibold leading-snug text-white/80">
               {title}
             </div>
 
-            {items.map(({ id, label, icon: Icon }) => {
+            {items.map(({ id, label, icon: Icon, path }) => {
               const isActive = active === id;
 
               return (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => onNavigate(id)}
+                  onClick={() => (path ? navigate(path) : onNavigate(id))}
                   className={`flex w-full items-start gap-3 rounded-md px-3 py-2 text-left text-[13px] font-semibold leading-snug text-white ${
                     isActive ? "bg-white/15" : "hover:bg-white/10"
                   }`}

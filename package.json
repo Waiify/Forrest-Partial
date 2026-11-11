@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "server": "node server/index.js",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "react-dom": "^19.2.8",
     "react-google-recaptcha": "^3.1.0",
     "react-router-dom": "^7.18.4",
+    "sweetalert2": "^11.26.25",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
