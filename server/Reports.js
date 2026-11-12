@@ -49,6 +49,7 @@ module.exports = function registerTransactions(app, {
   requireAdmin,
   requirePermission,
   getSettings,
+  uploadReportToDrive,
 }) {
   // ---------- MODELS ----------
   const transactionSchema = new mongoose.Schema({
@@ -246,8 +247,24 @@ module.exports = function registerTransactions(app, {
       const buffer = await buildPdf({ rows, summary, admin, query: req.query });
 
       const fileDate = new Date().toISOString().slice(0, 10);
+      const filename = `transactions-${fileDate}.pdf`;
+      let driveUploadStatus = 'not-connected';
+      try {
+        const upload = await uploadReportToDrive({
+          buffer,
+          filename,
+          mimeType: 'application/pdf',
+        });
+        driveUploadStatus = upload.status;
+      } catch (err) {
+        driveUploadStatus = 'failed';
+        console.error('Google Drive report upload failed:', err);
+      }
+
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="transactions-${fileDate}.pdf"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('X-Drive-Upload-Status', driveUploadStatus);
+      res.setHeader('Access-Control-Expose-Headers', 'X-Drive-Upload-Status');
       res.send(buffer);
     } catch (err) {
       if (res.headersSent) { console.error(err); return res.destroy(); }

@@ -12,6 +12,7 @@ const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const registerTransactions = require('./Reports');
 const registerAuditLog = require('./AuditLogs');
+const registerGoogleDrive = require('./GoogleDrive');
 
 const ADMIN_CODE = process.env.ADMIN_CODE || '';
 
@@ -26,6 +27,13 @@ if (!process.env.JWT_SECRET) {
   console.warn('JWT_SECRET is not configured; login tokens will be invalidated when the server restarts.');
 }
 
+// Original mail password: accepts EMAIL_PASS (new name) or EMAIL_APP_PASSWORD (old name)
+const ORIGINAL_MAIL_PASS = process.env.EMAIL_PASS || process.env.EMAIL_APP_PASSWORD;
+
+// Startup debug logs (from the old server.js). Never prints the password itself.
+console.log('EMAIL_USER:', process.env.EMAIL_USER);
+console.log('Original email password exists:', !!ORIGINAL_MAIL_PASS);
+
 // Which credentials are in use. Custom values (saved from the Admin Settings page) are kept
 // next to the originals in .env, and the admin can switch between the two at any time.
 function hasCustomEmail() {
@@ -38,10 +46,10 @@ function getMailAuth() {
   if (usingCustomEmail()) {
     return {
       user: process.env.CUSTOM_EMAIL_USER || process.env.EMAIL_USER,
-      pass: process.env.CUSTOM_EMAIL_PASS || process.env.EMAIL_PASS,
+      pass: process.env.CUSTOM_EMAIL_PASS || ORIGINAL_MAIL_PASS,
     };
   }
-  return { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS };
+  return { user: process.env.EMAIL_USER, pass: ORIGINAL_MAIL_PASS };
 }
 
 function hasCustomCaptcha() {
@@ -263,6 +271,12 @@ const { audit } = registerAuditLog(app, {
   findTokenUser,
 });
 
+const { uploadReportToDrive } = registerGoogleDrive(app, {
+  mongoose,
+  User,
+  requireLogin,
+  requirePermission,
+});
 
 // CUSTOMERS (para sa Customers page)
 app.get('/api/users', requireLogin, requireStaffOrAdmin, requireStaffPermission('customers', 'view'), async (req, res) => {
@@ -621,10 +635,10 @@ const Capsule = mongoose.model('Capsule', new mongoose.Schema({
   type:         { type: String, enum: ['Standard', 'Premium'], default: 'Standard' },
   pricePerHour: { type: Number, required: true, min: 0 },
   status: {
-  type: String,
-  enum: ['Available', 'Reserved', 'Occupied', 'Coming Soon', 'Under Maintenance'],
-  default: 'Available',
-},
+    type: String,
+    enum: ['Available', 'Reserved', 'Occupied', 'Coming Soon', 'Under Maintenance'],
+    default: 'Available',
+  },
   isArchived:   { type: Boolean, default: false },
 }, { timestamps: true }), 'Capsules');
 
@@ -657,6 +671,7 @@ const { recordPaymentChange } = registerTransactions(app, {
   requireAdmin,
   requirePermission,
   getSettings,
+  uploadReportToDrive,
 });
 
 // GET: ?archived=true|false
@@ -1134,7 +1149,7 @@ function otpHash(userId, code) {
 }
 
 async function sendSettingsOtp(email, code) {
-  const original = { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS };
+  const original = { user: process.env.EMAIL_USER, pass: ORIGINAL_MAIL_PASS };
   const custom = { user: process.env.CUSTOM_EMAIL_USER, pass: process.env.CUSTOM_EMAIL_PASS };
   const accounts = [custom, original].filter(
     (account, index, list) =>
@@ -2058,7 +2073,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
     const { user: mailUser } = getMailAuth();
     await createTransporter().sendMail({
-      from: `"Forrest" <${mailUser}>`,
+      from: `"Forrest Co-Working Space" <${mailUser}>`,
       to: user.email,
       subject: 'Your Forrest password reset code',
       text: `Your verification code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore this email.`,
@@ -2066,7 +2081,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
     res.json(genericReply);
   } catch (err) {
-    console.error(err);
+    console.error('Forgot password error:', err.message);
     res.status(500).json({ message: 'Could not send the code. Please try again.' });
   }
 });

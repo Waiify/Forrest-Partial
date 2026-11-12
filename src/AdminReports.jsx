@@ -161,6 +161,7 @@ export default function AdminReports() {
   const pdfEnabled = settings?.pdfExportEnabled !== false;
   const canExport = hasCurrentPermission("reports", "export");
   const isAdmin = readSessionUser()?.role === "admin";
+  const driveJustConnected = new URLSearchParams(window.location.search).get("drive") === "connected";
 
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState({ payments: 0, refunds: 0, voids: 0, net: 0, count: 0 });
@@ -172,6 +173,8 @@ export default function AdminReports() {
   const [notice, setNotice] = useState("");
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [driveStatus, setDriveStatus] = useState(null);
+  const [driveBusy, setDriveBusy] = useState(false);
   const [selected, setSelected] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -197,6 +200,18 @@ export default function AdminReports() {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    if (!canExport) return undefined;
+    let current = true;
+    request(`${API}/drive/status`, { headers: adminHeaders() })
+      .then(readResponse)
+      .then((status) => current && setDriveStatus(status))
+      .catch((err) => current && setDriveStatus({ error: err.message }));
+    return () => {
+      current = false;
+    };
+  }, [canExport]);
 
   // Any filter change goes back to page 1
   useEffect(() => {
@@ -244,6 +259,20 @@ export default function AdminReports() {
 
   const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
 
+  async function connectDrive() {
+    setDriveBusy(true);
+    setError("");
+    try {
+      const result = await readResponse(
+        await request(`${API}/drive/authorize`, { headers: adminHeaders() })
+      );
+      window.location.assign(result.authorizationUrl);
+    } catch (err) {
+      setError(err.message || "Could not connect Google Drive.");
+      setDriveBusy(false);
+    }
+  }
+
   async function exportPdf() {
     setExporting(true);
     setError("");
@@ -251,6 +280,7 @@ export default function AdminReports() {
     try {
       const response = await request(`${API}/reports/export?${filterQuery}`, { headers: adminHeaders() });
       if (!response.ok) await readResponse(response); // throws with the server's message
+      const driveUploadStatus = response.headers.get("X-Drive-Upload-Status");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -260,7 +290,15 @@ export default function AdminReports() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      setNotice("PDF downloaded.");
+      if (driveUploadStatus === "uploaded") {
+        setNotice("PDF downloaded and saved to Google Drive.");
+      } else if (driveUploadStatus === "failed") {
+        setNotice("PDF downloaded, but Google Drive could not save a copy.");
+      } else if (driveUploadStatus === "not-connected") {
+        setNotice("PDF downloaded. Google Drive is not connected; ask an admin to connect it.");
+      } else {
+        setNotice("PDF downloaded.");
+      }
     } catch (err) {
       setError(err.message || "Could not export the PDF.");
     } finally {
@@ -308,21 +346,48 @@ export default function AdminReports() {
                   Every payment, refund, and void, with the full details. Filter the list, then export it as a PDF.
                 </p>
               </div>
-              {pdfEnabled && canExport ? (
-                <button
-                  type="button"
-                  onClick={exportPdf}
-                  disabled={exporting || loading || total === 0}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#2F9E7A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2a8f6f] focus-visible:ring-2 focus-visible:ring-[#0B3B2A] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Download className="h-4 w-4" />
-                  {exporting ? "Preparing PDF..." : "Export PDF"}
-                </button>
-              ) : (
-                <p className="text-sm text-[#6F8E7F]">
-                  {!canExport ? "You do not have permission to export reports." : "PDF export is disabled in Settings."}
-                </p>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {canExport && driveStatus && (
+                  <span className="text-xs text-[#6F8E7F]">
+                    {driveStatus.error
+                      ? "Google Drive status unavailable"
+                      : driveStatus.connected
+                        ? "Google Drive connected"
+                        : driveStatus.configured
+                          ? "Google Drive not connected"
+                          : "Google Drive needs server configuration"}
+                  </span>
+                )}
+                {canExport && isAdmin && (
+                  <button
+                    type="button"
+                    onClick={connectDrive}
+                    disabled={driveBusy || driveStatus === null}
+                    className="rounded-lg border border-[#CFE3D9] px-3 py-2.5 text-sm font-semibold text-[#315D49] hover:bg-[#F3F9F5] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {driveBusy
+                      ? "Connecting..."
+                      : driveStatus?.connected
+                        ? "Reconnect Google Drive"
+                        : "Connect Google Drive"}
+                  </button>
+                )}
+                {pdfEnabled && canExport ? (
+                  <button
+                    type="button"
+                    onClick={exportPdf}
+                    disabled={exporting || loading || total === 0}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#2F9E7A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2a8f6f] focus-visible:ring-2 focus-visible:ring-[#0B3B2A] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Download className="h-4 w-4" />
+                    {exporting ? "Preparing PDF..." : "Export PDF"}
+                  </button>
+                ) : (
+                  <p className="text-sm text-[#6F8E7F]">
+                    {!canExport ? "You do not have permission to export reports." : "PDF export is disabled in Settings."}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -452,15 +517,27 @@ export default function AdminReports() {
                 </div>
               )}
 
-              {notice && !error && (
+              {(notice || driveJustConnected) && !error && (
                 <div
                   className="flex items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50 px-5 py-3 text-sm text-emerald-700 sm:px-6"
                   role="status"
                 >
-                  <span>{notice}</span>
+                  <span>{notice || "Google Drive is connected."}</span>
                   <button
                     type="button"
-                    onClick={() => setNotice("")}
+                    onClick={() => {
+                      setNotice("");
+                      if (driveJustConnected) {
+                        const params = new URLSearchParams(window.location.search);
+                        params.delete("drive");
+                        const query = params.toString();
+                        window.history.replaceState(
+                          window.history.state,
+                          "",
+                          `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`
+                        );
+                      }
+                    }}
                     aria-label="Dismiss"
                     className="rounded p-0.5 hover:bg-emerald-100"
                   >
