@@ -265,6 +265,106 @@ function CapsuleModal({ capsule, existingIds, isArchivedTab, onSave, onArchive, 
   );
 }
 
+/* ---------- Statistics ---------- */
+
+/* Capsule statistics */
+// Ang mga status nga dili magamit karon (dili iapil sa occupancy/utilization)
+const OUT_OF_SERVICE = ["Under Maintenance", "Coming Soon"];
+const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0);
+
+/* Progress bar */
+function Bar({ value, color = "bg-[#2F9E7A]" }) {
+  return (
+    <div className="h-2 w-full overflow-hidden rounded-full bg-[#EAF4EE]">
+      <div className={`h-full ${color}`} style={{ width: `${value}%` }} />
+    </div>
+  );
+}
+
+/* Occupancy and utilization panel */
+function StatsPanel({ capsules }) {
+  const s = useMemo(() => {
+    const count = (st) => capsules.filter((c) => c.status === st).length;
+    const total = capsules.length;
+    const occupied = count("Occupied");
+    const reserved = count("Reserved");
+    const available = count("Available");
+    const outOfService = capsules.filter((c) => OUT_OF_SERVICE.includes(c.status)).length;
+    const operational = total - outOfService; // capsules nga magamit gyud
+
+    const perType = ROOM_TYPES.map((t) => {
+      const list = capsules.filter((c) => c.type === t && !OUT_OF_SERVICE.includes(c.status));
+      const occ = list.filter((c) => c.status === "Occupied").length;
+      const used = list.filter((c) => c.status === "Occupied" || c.status === "Reserved").length;
+      return {
+        type: t,
+        total: list.length,
+        occupied: occ,
+        occupancy: pct(occ, list.length),
+        utilization: pct(used, list.length),
+      };
+    });
+
+    const hourlyRevenue = capsules
+      .filter((c) => c.status === "Occupied")
+      .reduce((sum, c) => sum + Number(c.rate || 0), 0);
+
+    return {
+      total,
+      occupied,
+      reserved,
+      available,
+      outOfService,
+      operational,
+      perType,
+      hourlyRevenue,
+      occupancy: pct(occupied, operational), // occupied karon
+      utilization: pct(occupied + reserved, operational), // occupied + reserved
+    };
+  }, [capsules]);
+
+  const cards = [
+    ["Occupancy rate", `${s.occupancy}%`, `${s.occupied} of ${s.operational} usable capsules`],
+    ["Utilization rate", `${s.utilization}%`, `${s.occupied + s.reserved} occupied or reserved`],
+    ["Available now", s.available, "Ready for booking"],
+    ["Out of service", s.outOfService, "Maintenance / coming soon"],
+    ["Live revenue rate", `₱${s.hourlyRevenue.toLocaleString()}/hr`, "From occupied capsules"],
+  ];
+
+  return (
+    <div className="border-t border-[#CFE3D9] px-6 py-5">
+      <h3 className="mb-3 text-sm font-semibold text-[#0B3B2A]">Occupancy & utilization</h3>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {cards.map(([label, value, hint]) => (
+          <div key={label} className="rounded-xl border border-[#CFE3D9] bg-[#F5FAF7] p-4">
+            <p className="text-xs text-[#5F7F70]">{label}</p>
+            <p className="mt-1 text-2xl font-semibold text-[#0B3B2A]">{value}</p>
+            <p className="mt-0.5 text-xs text-[#6F8E7F]">{hint}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {s.perType.map((t) => (
+          <div key={t.type} className="rounded-xl border border-[#CFE3D9] p-4">
+            <div className="mb-2 flex justify-between text-sm">
+              <span className="font-medium text-[#0B3B2A]">{t.type}</span>
+              <span className="text-[#5F7F70]">
+                {t.occupied}/{t.total} occupied
+              </span>
+            </div>
+            <p className="mb-1 text-xs text-[#5F7F70]">Occupancy {t.occupancy}%</p>
+            <Bar value={t.occupancy} color="bg-[#A66BE6]" />
+            <p className="mb-1 mt-3 text-xs text-[#5F7F70]">Utilization {t.utilization}%</p>
+            <Bar value={t.utilization} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Page ---------- */
 
 /* Main page */
@@ -314,6 +414,10 @@ export default function AdminCapsule() {
     }
     if (section === "Settings") {
       navigate("/settings");
+      return;
+    }
+    if (section === "Reports" || section === "transactions") {
+      navigate("/reports");
       return;
     }
     navigate("/dashboard");
@@ -454,6 +558,9 @@ export default function AdminCapsule() {
                 </button>
               ))}
             </div>
+
+            {/* Bag-o: occupancy ug utilization statistics (Capsules tab ra) */}
+            {activeTab === "capsules" && !loading && <StatsPanel capsules={capsules} />}
 
             <div className="flex flex-wrap items-center gap-3 px-6 py-5">
               <Select

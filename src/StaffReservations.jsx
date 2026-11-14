@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { CalendarDays, Plus, RefreshCw, X } from "lucide-react";
+import { CalendarDays, Pencil, Plus, RefreshCw, X } from "lucide-react";
 
 import pageBackground from "./assets/page_background.jpeg";
 
@@ -33,6 +33,8 @@ const STATUSES = ["Pending", "Confirmed", "Checked in", "Completed", "Cancelled"
 const ACTIVE_STATUSES = new Set(["Pending", "Confirmed", "Checked in"]);
 const PAYMENT_STATUSES = ["Unpaid", "Paid"];
 const BOOKABLE_CAPSULE_STATUSES = new Set(["Available", "Reserved"]);
+// Reservations nga pwede pa i-edit (capsule, petsa, oras, duration)
+const EDITABLE_STATUSES = new Set(["Pending", "Confirmed"]);
 
 const STATUS_STYLES = {
   Pending: "bg-amber-50 text-amber-700",
@@ -101,7 +103,7 @@ const ACTIONS = {
 };
 
 const inputClass =
-  "h-10 w-full rounded-lg border border-[#CFE3D9] bg-white px-3 text-sm text-[#0B3B2A] outline-none focus:border-[#2F9E7A] focus:ring-2 focus:ring-[#2F9E7A]/25";
+  "h-10 w-full rounded-lg border border-[#CFE3D9] bg-white px-3 text-sm text-[#0B3B2A] outline-none focus:border-[#2F9E7A] focus:ring-2 focus:ring-[#2F9E7A]/25 disabled:bg-slate-100 disabled:text-slate-500";
 
 
 async function request(path, { method = "GET", body, signal } = {}) {
@@ -290,14 +292,34 @@ function ConfirmModal({ reservation, action, capsuleName, busy, error, onCancel,
   );
 }
 
-function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
-  const [form, setForm] = useState({
-    customerId: "",
-    capsuleId: "",
-    startAt: "",
-    durationHours: "1",
-    status: "Pending",
-  });
+/*
+  Gamiton para sa pag-create UG pag-edit sa reservation.
+  - Kung naay `reservation` prop = edit mode (dili ma-usab ang customer)
+  - Ang mga milabay nga petsa/oras dili pwede pilion
+*/
+function ReservationModal({ reservation, customers, capsules, onClose, onSave, saving }) {
+  const isEdit = Boolean(reservation);
+
+  // Ang orihinal nga start time (para mahibaw-an kung gi-usab ba)
+  const initialStart = isEdit ? toLocalDateTimeValue(new Date(reservation.startAt)) : "";
+
+  const [form, setForm] = useState(
+    isEdit
+      ? {
+          customerId: "",
+          capsuleId: reservation.capsuleId || "",
+          startAt: initialStart,
+          durationHours: String(reservation.durationHours ?? 1),
+          status: reservation.status,
+        }
+      : {
+          customerId: "",
+          capsuleId: "",
+          startAt: "",
+          durationHours: "1",
+          status: "Pending",
+        }
+  );
   const [error, setError] = useState("");
 
   // Close with Escape.
@@ -317,13 +339,20 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
       ? Number(selectedCapsule.pricePerHour) * hours
       : null;
 
+  // Pinakaagi nga pwede pilion: karon nga minuto
+  const minStart = toLocalDateTimeValue(new Date());
+
   async function submit(event) {
     event.preventDefault();
     if (saving) return;
     setError("");
 
-    if (!form.customerId || !form.capsuleId || !form.startAt) {
-      setError("Choose a customer, capsule, and start time.");
+    if ((!isEdit && !form.customerId) || !form.capsuleId || !form.startAt) {
+      setError(
+        isEdit
+          ? "Choose a capsule and start time."
+          : "Choose a customer, capsule, and start time."
+      );
       return;
     }
     if (!Number.isFinite(hours) || hours < 0.5 || hours > 24) {
@@ -336,21 +365,36 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
       return;
     }
 
+    // Dili tugotan ang milabay nga petsa/oras (gawas kung wala gi-usab ang orihinal)
+    const startChanged = !isEdit || form.startAt !== initialStart;
+    if (startChanged && form.startAt < minStart) {
+      setError("Past dates and times can't be selected. Choose a time from now onward.");
+      return;
+    }
+
     try {
-      await onSave({
-        customerId: form.customerId,
-        capsuleId: form.capsuleId,
-        startAt: start.toISOString(),
-        durationHours: hours,
-        status: form.status,
-      });
+      await onSave(
+        isEdit
+          ? {
+              capsuleId: form.capsuleId,
+              startAt: start.toISOString(),
+              durationHours: hours,
+            }
+          : {
+              customerId: form.customerId,
+              capsuleId: form.capsuleId,
+              startAt: start.toISOString(),
+              durationHours: hours,
+              status: form.status,
+            }
+      );
     } catch (err) {
       // e.g. the server rejecting an overlapping booking
       setError(err.message);
     }
   }
 
-  const noOptions = customers.length === 0 || capsules.length === 0;
+  const noOptions = capsules.length === 0 || (!isEdit && customers.length === 0);
 
   return (
     <div
@@ -359,6 +403,7 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
     >
       <form
         onSubmit={submit}
+        noValidate
         role="dialog"
         aria-modal="true"
         aria-labelledby="reservation-form-title"
@@ -370,10 +415,12 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
               id="reservation-form-title"
               className="text-lg font-semibold text-[#0B3B2A]"
             >
-              New reservation
+              {isEdit ? "Edit reservation" : "New reservation"}
             </h2>
             <p className="mt-1 text-sm text-[#5F7F70]">
-              Create a booking for an existing customer.
+              {isEdit
+                ? "Change the capsule, date, time, or duration."
+                : "Create a booking for an existing customer."}
             </p>
           </div>
           <button
@@ -387,27 +434,41 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
         </div>
 
         <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
-              Customer
-            </span>
-            <select
-              className={inputClass}
-              value={form.customerId}
-              onChange={(e) => update("customerId", e.target.value)}
-              required
-            >
-              <option value="">Select a customer</option>
-              {customers.map((customer) => (
-                <option key={customer._id} value={customer._id}>
-                  {customerName(customer)}
-                  {customer.email && customerName(customer) !== customer.email
-                    ? ` · ${customer.email}`
-                    : ""}
-                </option>
-              ))}
-            </select>
-          </label>
+          {/* Customer: pilion kung bag-o, read-only kung edit */}
+          {isEdit ? (
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
+                Customer
+              </span>
+              <input
+                className={inputClass}
+                value={reservation.guestName || reservation.guestEmail || "—"}
+                disabled
+                readOnly
+              />
+            </label>
+          ) : (
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
+                Customer
+              </span>
+              <select
+                className={inputClass}
+                value={form.customerId}
+                onChange={(e) => update("customerId", e.target.value)}
+              >
+                <option value="">Select a customer</option>
+                {customers.map((customer) => (
+                  <option key={customer._id} value={customer._id}>
+                    {customerName(customer)}
+                    {customer.email && customerName(customer) !== customer.email
+                      ? ` · ${customer.email}`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
@@ -417,7 +478,6 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
               className={inputClass}
               value={form.capsuleId}
               onChange={(e) => update("capsuleId", e.target.value)}
-              required
             >
               <option value="">Select a capsule</option>
               {capsules.map((capsule) => (
@@ -433,14 +493,17 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
             <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
               Start date and time
             </span>
+            {/* min = karon, busa ang milabay nga petsa dili mapili sa calendar */}
             <input
               className={inputClass}
               type="datetime-local"
-              min={toLocalDateTimeValue(new Date())}
+              min={minStart}
               value={form.startAt}
               onChange={(e) => update("startAt", e.target.value)}
-              required
             />
+            <span className="mt-1 block text-xs text-[#6F8E7F]">
+              Past dates and times can't be selected.
+            </span>
           </label>
 
           <label className="block">
@@ -455,33 +518,36 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
               step="0.5"
               value={form.durationHours}
               onChange={(e) => update("durationHours", e.target.value)}
-              required
             />
           </label>
 
-          <label className="block sm:col-span-2">
-            <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
-              Initial status
-            </span>
-            <select
-              className={inputClass}
-              value={form.status}
-              onChange={(e) => update("status", e.target.value)}
-            >
-              <option>Pending</option>
-              <option>Confirmed</option>
-            </select>
-          </label>
+          {/* Initial status: sa bag-ong reservation ra */}
+          {!isEdit && (
+            <label className="block sm:col-span-2">
+              <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
+                Initial status
+              </span>
+              <select
+                className={inputClass}
+                value={form.status}
+                onChange={(e) => update("status", e.target.value)}
+              >
+                <option>Pending</option>
+                <option>Confirmed</option>
+              </select>
+            </label>
+          )}
 
           {estimate !== null && (
             <p className="rounded-lg bg-[#EAF4EE] px-3 py-2 text-sm text-[#0B4A2E] sm:col-span-2">
-              Estimated total: <strong>{formatCurrency(estimate)}</strong>
+              {isEdit ? "New estimated total" : "Estimated total"}:{" "}
+              <strong>{formatCurrency(estimate)}</strong>
             </p>
           )}
 
           {noOptions && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700 sm:col-span-2">
-              {customers.length === 0
+              {!isEdit && customers.length === 0
                 ? "No customers found. A customer must have an account before you can book for them."
                 : "No capsules are available to book right now."}
             </p>
@@ -510,7 +576,7 @@ function ReservationModal({ customers, capsules, onClose, onSave, saving }) {
             disabled={saving || noOptions}
             className="rounded-lg bg-[#2F9E7A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2a8f6f] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? "Saving..." : "Create reservation"}
+            {saving ? "Saving..." : isEdit ? "Save changes" : "Create reservation"}
           </button>
         </div>
       </form>
@@ -534,6 +600,8 @@ export default function StaffReservation() {
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState("");
   const [showForm, setShowForm] = useState(false);
+  // Ang reservation nga gi-edit karon (null kung wala)
+  const [editing, setEditing] = useState(null);
 
   // { reservation, action } while the confirmation overlay is open
   const [pending, setPending] = useState(null);
@@ -635,6 +703,15 @@ export default function StaffReservation() {
     [capsules]
   );
 
+  // Sa edit: bookable capsules + ang kasamtangang capsule sa reservation
+  const editableCapsules = useMemo(() => {
+    if (!editing) return bookableCapsules;
+    return capsules.filter(
+      (c) =>
+        BOOKABLE_CAPSULE_STATUSES.has(c.status) || c.capsuleId === editing.capsuleId
+    );
+  }, [capsules, bookableCapsules, editing]);
+
 
   const capsuleFilterOptions = useMemo(() => {
     const options = new Map(capsuleNames);
@@ -703,6 +780,25 @@ export default function StaffReservation() {
       await request("/reservations", { method: "POST", body: data });
       setShowForm(false);
       setActionError("");
+      await loadReservations();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // I-save ang mga giusab sa reservation (capsule, petsa/oras, duration)
+  async function updateReservation(data) {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const updated = await request(`/reservations/${editing._id}`, {
+        method: "PATCH",
+        body: data,
+      });
+      if (updated && updated._id) replaceReservation(updated);
+      setEditing(null);
+      setActionError("");
+      // I-refresh para sigurado nga updated ang endAt ug totalPrice
       await loadReservations();
     } finally {
       setSaving(false);
@@ -1012,6 +1108,7 @@ export default function StaffReservation() {
                         const isBusy = updatingId === reservation._id;
                         const payStatus = reservation.paymentStatus || "Unpaid";
                         const actions = ACTIONS[reservation.status] || [];
+                        const canEdit = EDITABLE_STATUSES.has(reservation.status);
                         const duration = Number(reservation.durationHours);
 
                         return (
@@ -1078,8 +1175,20 @@ export default function StaffReservation() {
                               </select>
                             </td>
                             <td className="px-4 py-4">
-                              <div className="flex gap-1">
-                                {actions.length === 0 ? (
+                              <div className="flex items-center gap-1">
+                                {/* Edit: Pending ug Confirmed ra */}
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => setEditing(reservation)}
+                                    className="inline-flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-medium text-[#2F8060] hover:bg-[#EAF4EE] disabled:opacity-60"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                    Edit
+                                  </button>
+                                )}
+                                {actions.length === 0 && !canEdit ? (
                                   <span className="text-xs text-slate-400">
                                     —
                                   </span>
@@ -1111,13 +1220,18 @@ export default function StaffReservation() {
           </div>
         </main>
 
-        {showForm && (
+        {(showForm || editing) && (
           <ReservationModal
+            key={editing ? editing._id : "new"}
+            reservation={editing}
             customers={customers}
-            capsules={bookableCapsules}
+            capsules={editing ? editableCapsules : bookableCapsules}
             saving={saving}
-            onClose={() => setShowForm(false)}
-            onSave={createReservation}
+            onClose={() => {
+              setShowForm(false);
+              setEditing(null);
+            }}
+            onSave={editing ? updateReservation : createReservation}
           />
         )}
 

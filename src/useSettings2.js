@@ -7,9 +7,11 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 // the options stay visible, and the server still blocks anything the admin turned off.
 const DEFAULTS = {
   googleAuthEnabled: true,
+  googleMapsEnabled: true,
+  pdfExportEnabled: true,
   recaptchaEnabled: true,
   emailEnabled: true,
-
+  settingsLoaded: false,
 };
 
 // Reads the admin's on/off settings from the server.
@@ -20,11 +22,9 @@ export default function useSettings() {
     let current = true;
     fetch(`${API}/settings`)
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Request failed"))))
-      .then((data) => {
-        if (current) setSettings({ ...DEFAULTS, ...data });
-      })
+      .then((data) => current && setSettings({ ...DEFAULTS, ...data, settingsLoaded: true }))
       .catch(() => {
-        // Keep the defaults.
+        if (current) setSettings({ ...DEFAULTS, settingsLoaded: true });
       });
     return () => {
       current = false;

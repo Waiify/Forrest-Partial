@@ -116,6 +116,10 @@ export default function Customers() {
       navigate("/settings");
       return;
     }
+    if (section === "Reports" || section === "transactions") {
+      navigate("/reports");
+      return;
+    }
     navigate("/dashboard");
   }
 

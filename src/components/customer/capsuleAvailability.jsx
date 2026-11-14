@@ -12,8 +12,9 @@ import {
 import { CAPSULES } from "../../dashboardData.js";
 
 export default function CapsuleAvailability({ onBook }) {
+
   /* =====================================================
-     DATE AND CALENDAR STATES
+      DATE AND CALENDAR STATES
   ====================================================== */
 
   const today = new Date();
@@ -32,7 +33,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     TIME SLOTS PINAKA-IMPORTANTE to see availability
+      TIME SLOTS
   ====================================================== */
 
   const timeSlots = [
@@ -60,68 +61,199 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     MOCK BOOKED SLOTS PANI FOR NOW
+      MOCK CAPSULE AVAILABILITY
+      FOR DEMO / UI TESTING
   ====================================================== */
 
-  const bookedSlots = {
-    "2026-10-25": {
-      A1: ["05:00 AM - 09:00 AM"],
-      A2: ["01:00 PM - 05:00 PM"],
+  const availabilityData = {
+
+    "2026-11-04": {
+
+      A1: {
+        "05:00 AM - 09:00 AM": "Available",
+        "09:00 AM - 01:00 PM": "Booked",
+        "01:00 PM - 05:00 PM": "Available",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
+      A2: {
+        "05:00 AM - 09:00 AM": "Available",
+        "09:00 AM - 01:00 PM": "Reserved",
+        "01:00 PM - 05:00 PM": "Available",
+        "05:00 PM - 09:00 PM": "Cleaning",
+      },
+
+      A3: {
+        "05:00 AM - 09:00 AM": "Available",
+        "09:00 AM - 01:00 PM": "Available",
+        "01:00 PM - 05:00 PM": "Booked",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
     },
 
-    "2026-10-26": {
-      A3: [
-        "09:00 AM - 01:00 PM",
-        "01:00 PM - 05:00 PM",
-      ],
+
+    "2026-11-07": {
+
+      A1: {
+        "05:00 AM - 09:00 AM": "Reserved",
+        "09:00 AM - 01:00 PM": "Available",
+        "01:00 PM - 05:00 PM": "Available",
+        "05:00 PM - 09:00 PM": "Booked",
+      },
+
+      A2: {
+        "05:00 AM - 09:00 AM": "Available",
+        "09:00 AM - 01:00 PM": "Booked",
+        "01:00 PM - 05:00 PM": "Cleaning",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
     },
 
-    "2026-10-27": {
-      A1: ["09:00 AM - 01:00 PM"],
-      A4: ["05:00 PM - 09:00 PM"],
+
+    "2026-11-12": {
+
+      A1: {
+        "05:00 AM - 09:00 AM": "Available",
+        "09:00 AM - 01:00 PM": "Available",
+        "01:00 PM - 05:00 PM": "Reserved",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
+      A2: {
+        "05:00 AM - 09:00 AM": "Booked",
+        "09:00 AM - 01:00 PM": "Booked",
+        "01:00 PM - 05:00 PM": "Available",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
+      A3: {
+        "05:00 AM - 09:00 AM": "Maintenance",
+        "09:00 AM - 01:00 PM": "Maintenance",
+        "01:00 PM - 05:00 PM": "Maintenance",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
     },
 
-    "2026-10-28": {
-      A2: ["05:00 AM - 09:00 AM"],
-      A5: ["01:00 PM - 05:00 PM"],
+
+    "2026-11-18": {
+
+      A1: {
+        "05:00 AM - 09:00 AM": "Booked",
+        "09:00 AM - 01:00 PM": "Available",
+        "01:00 PM - 05:00 PM": "Reserved",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
+      A2: {
+        "05:00 AM - 09:00 AM": "Available",
+        "09:00 AM - 01:00 PM": "Cleaning",
+        "01:00 PM - 05:00 PM": "Available",
+        "05:00 PM - 09:00 PM": "Booked",
+      },
+
     },
 
-    "2026-10-30": {
-      A1: ["01:00 PM - 05:00 PM"],
-      A3: ["05:00 PM - 09:00 PM"],
+
+    "2026-11-24": {
+
+      A1: {
+        "05:00 AM - 09:00 AM": "Available",
+        "09:00 AM - 01:00 PM": "Booked",
+        "01:00 PM - 05:00 PM": "Available",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
+      A2: {
+        "05:00 AM - 09:00 AM": "Available",
+        "09:00 AM - 01:00 PM": "Reserved",
+        "01:00 PM - 05:00 PM": "Available",
+        "05:00 PM - 09:00 PM": "Cleaning",
+      },
+
+      A3: {
+        "05:00 AM - 09:00 AM": "Available",
+        "09:00 AM - 01:00 PM": "Available",
+        "01:00 PM - 05:00 PM": "Booked",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
     },
+
+
+    "2026-11-28": {
+
+      A1: {
+        "05:00 AM - 09:00 AM": "Maintenance",
+        "09:00 AM - 01:00 PM": "Maintenance",
+        "01:00 PM - 05:00 PM": "Available",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
+      A2: {
+        "05:00 AM - 09:00 AM": "Booked",
+        "09:00 AM - 01:00 PM": "Available",
+        "01:00 PM - 05:00 PM": "Reserved",
+        "05:00 PM - 09:00 PM": "Available",
+      },
+
+    },
+
   };
 
 
   /* =====================================================
-     AVAILABLE CAPSULES DAYON
+      AVAILABLE CAPSULES
   ====================================================== */
 
   const availableCapsules = useMemo(() => {
+
     return CAPSULES.filter(
       (capsule) =>
         capsule.status?.toLowerCase() ===
         "available"
     );
+
   }, []);
 
 
+  /* =====================================================
+      FORMAT DATE
+  ====================================================== */
 
   const formatDateKey = (date) => {
-    const year = date.getFullYear();
-    const month = String(
-      date.getMonth() + 1
-    ).padStart(2, "0");
-    const day = String(
-      date.getDate()
-    ).padStart(2, "0");
+
+    const year =
+      date.getFullYear();
+
+    const month =
+      String(
+        date.getMonth() + 1
+      ).padStart(2, "0");
+
+    const day =
+      String(
+        date.getDate()
+      ).padStart(2, "0");
 
     return `${year}-${month}-${day}`;
   };
 
 
-  const isSameDay = (date1, date2) => {
-    if (!date1 || !date2) return false;
+  /* =====================================================
+      CHECK SAME DAY
+  ====================================================== */
+
+  const isSameDay = (
+    date1,
+    date2
+  ) => {
+
+    if (!date1 || !date2) {
+      return false;
+    }
 
     return (
       date1.getFullYear() ===
@@ -131,48 +263,59 @@ export default function CapsuleAvailability({ onBook }) {
       date1.getDate() ===
         date2.getDate()
     );
+
   };
 
 
-  const isPastDate = (date) => {
-    const checkDate = new Date(
-      date.getFullYear(),
-      date.getMonth(),
-      date.getDate()
-    );
+  /* =====================================================
+      CHECK PAST DATE
+  ====================================================== */
 
-    const currentDate = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
+  const isPastDate = (date) => {
+
+    const checkDate =
+      new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate()
+      );
+
+    const currentDate =
+      new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
 
     return checkDate < currentDate;
   };
 
 
   /* =====================================================
-     CALENDAR DAYS MWEHEHE
+      CALENDAR DAYS
   ====================================================== */
 
   const calendarDays = useMemo(() => {
+
     const year =
       currentMonth.getFullYear();
 
     const month =
       currentMonth.getMonth();
 
-    const firstDay = new Date(
-      year,
-      month,
-      1
-    );
+    const firstDay =
+      new Date(
+        year,
+        month,
+        1
+      );
 
-    const lastDay = new Date(
-      year,
-      month + 1,
-      0
-    );
+    const lastDay =
+      new Date(
+        year,
+        month + 1,
+        0
+      );
 
     const daysInMonth =
       lastDay.getDate();
@@ -182,15 +325,19 @@ export default function CapsuleAvailability({ onBook }) {
 
     const days = [];
 
-    /* Empty spaces before first day para dili maka select ug date nga humana*/
+
+    /* Empty spaces before first day */
 
     for (
       let i = 0;
       i < startingDay;
       i++
     ) {
+
       days.push(null);
+
     }
+
 
     /* Actual days */
 
@@ -199,25 +346,34 @@ export default function CapsuleAvailability({ onBook }) {
       day <= daysInMonth;
       day++
     ) {
+
       days.push(
-        new Date(year, month, day)
+        new Date(
+          year,
+          month,
+          day
+        )
       );
+
     }
 
     return days;
+
   }, [currentMonth]);
 
 
   /* =====================================================
-     MONTH NAVIGATION PARA MAKA USAD KA
+      MONTH NAVIGATION
   ====================================================== */
 
   const previousMonth = () => {
-    const previous = new Date(
-      currentMonth.getFullYear(),
-      currentMonth.getMonth() - 1,
-      1
-    );
+
+    const previous =
+      new Date(
+        currentMonth.getFullYear(),
+        currentMonth.getMonth() - 1,
+        1
+      );
 
     const currentMonthStart =
       new Date(
@@ -226,14 +382,26 @@ export default function CapsuleAvailability({ onBook }) {
         1
       );
 
-    if (previous >= currentMonthStart) {
-      setCurrentMonth(previous);
-      setSelectedDate(null);
+    if (
+      previous >=
+      currentMonthStart
+    ) {
+
+      setCurrentMonth(
+        previous
+      );
+
+      setSelectedDate(
+        null
+      );
+
     }
+
   };
 
 
   const nextMonth = () => {
+
     setCurrentMonth(
       new Date(
         currentMonth.getFullYear(),
@@ -242,16 +410,22 @@ export default function CapsuleAvailability({ onBook }) {
       )
     );
 
-    setSelectedDate(null);
+    setSelectedDate(
+      null
+    );
+
   };
 
 
   /* =====================================================
-     DATE AVAILABILITY STATUS DAYON DRI
+      DATE AVAILABILITY STATUS
   ====================================================== */
 
   const getDateStatus = (date) => {
-    if (!date) return "empty";
+
+    if (!date) {
+      return "empty";
+    }
 
     if (isPastDate(date)) {
       return "past";
@@ -260,115 +434,204 @@ export default function CapsuleAvailability({ onBook }) {
     const dateKey =
       formatDateKey(date);
 
-    const bookedForDate =
-      bookedSlots[dateKey] || {};
+    const dateData =
+      availabilityData[
+        dateKey
+      ] || {};
 
-    const totalAvailable =
-      availableCapsules.length;
 
-    let bookedCount = 0;
+    const allStatuses = [];
+
 
     Object.values(
-      bookedForDate
-    ).forEach((slots) => {
-      bookedCount += slots.length;
-    });
+      dateData
+    ).forEach(
+      (capsuleSlots) => {
 
-    if (totalAvailable === 0) {
-      return "booked";
-    }
+        Object.values(
+          capsuleSlots
+        ).forEach(
+          (status) => {
+
+            allStatuses.push(
+              status
+            );
+
+          }
+        );
+
+      }
+    );
+
+
+    /*
+      If there is no mock data for this date,
+      consider the date available.
+    */
 
     if (
-      bookedCount >=
-      totalAvailable * timeSlots.length
+      allStatuses.length === 0
     ) {
-      return "booked";
+
+      return "available";
+
     }
 
-    if (bookedCount > 0) {
-      return "partial";
+
+    const unavailableCount =
+      allStatuses.filter(
+        (status) =>
+          status !==
+          "Available"
+      ).length;
+
+
+    const totalSlots =
+      allStatuses.length;
+
+
+    if (
+      unavailableCount ===
+      totalSlots
+    ) {
+
+      return "booked";
+
     }
+
+
+    if (
+      unavailableCount > 0
+    ) {
+
+      return "partial";
+
+    }
+
 
     return "available";
+
   };
 
 
   /* =====================================================
-     SELECTED DATE INFORMATION PARA AWARE KA!
+      SELECTED DATE
   ====================================================== */
 
   const selectedDateKey =
     selectedDate
-      ? formatDateKey(selectedDate)
+      ? formatDateKey(
+          selectedDate
+        )
       : null;
-
-  const selectedDateBookings =
-    selectedDateKey
-      ? bookedSlots[selectedDateKey] || {}
-      : {};
 
 
   /* =====================================================
-     CHECK IF TIME SLOT IS BOOKED PARA DI NAKA MO SUGAL
+      GET SLOT STATUS
   ====================================================== */
 
-  const isSlotBooked = (
+  const getSlotStatus = (
     capsuleId,
     time
   ) => {
+
+    if (!selectedDateKey) {
+      return "Available";
+    }
+
     return (
-      selectedDateBookings[
-        capsuleId
-      ]?.includes(time) || false
+      availabilityData[
+        selectedDateKey
+      ]?.[capsuleId]?.[time] ||
+      "Available"
     );
+
   };
 
 
   /* =====================================================
-     BOOK HANDLER 
+      BOOK HANDLER
   ====================================================== */
 
   const handleBook = (
     capsule,
     time
   ) => {
-    if (!selectedDate) return;
 
-    if (
-      isSlotBooked(
-        capsule.id,
-        time.value
-      )
-    ) {
+    if (!selectedDate) {
       return;
     }
 
+
+    const slotStatus =
+      getSlotStatus(
+        capsule.id,
+        time.value
+      );
+
+
+    /*
+      Prevent booking if the slot
+      is not available.
+    */
+
+    if (
+      slotStatus !==
+      "Available"
+    ) {
+
+      return;
+
+    }
+
+
     const reservation = {
+
       capsule,
+
       capsuleName:
         capsule.name ||
         `Capsule ${capsule.id}`,
-      date: selectedDate,
+
+      date:
+        selectedDate,
+
       checkIn:
-        time.value.split(" - ")[0],
+        time.value.split(
+          " - "
+        )[0],
+
       checkOut:
-        time.value.split(" - ")[1],
-      status: "Pending",
+        time.value.split(
+          " - "
+        )[1],
+
+      status:
+        "Pending",
+
     };
 
+
     if (onBook) {
-      onBook(reservation);
+
+      onBook(
+        reservation
+      );
+
     } else {
+
       console.log(
         "Reservation:",
         reservation
       );
+
     }
+
   };
 
 
   /* =====================================================
-     MONTH TITLE
+      MONTH TITLE
   ====================================================== */
 
   const monthTitle =
@@ -382,7 +645,7 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     SELECTED DATE DISPLAY
+      SELECTED DATE DISPLAY
   ====================================================== */
 
   const selectedDateLabel =
@@ -400,23 +663,29 @@ export default function CapsuleAvailability({ onBook }) {
 
 
   /* =====================================================
-     RETURN
+      RETURN
   ====================================================== */
 
   return (
+
     <div className="space-y-5">
+
 
       {/* =================================================
           HEADER
       ================================================== */}
 
       <div>
-        
+
+        <h2 className="text-xl font-bold text-[#0B3B2A]">
+          Capsule Availability
+        </h2>
 
         <p className="mt-1 text-sm text-[#6F8E7F]">
           Check available dates and time slots
           before making a reservation.
         </p>
+
       </div>
 
 
@@ -426,16 +695,23 @@ export default function CapsuleAvailability({ onBook }) {
 
       <section className="rounded-2xl bg-white p-6 shadow-sm">
 
+
         {/* Calendar Header */}
 
         <div className="mb-5 flex items-center justify-between">
 
           <button
             type="button"
-            onClick={previousMonth}
+            onClick={
+              previousMonth
+            }
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#D7E7DE] text-[#0B4A2E] transition hover:bg-[#F1F8F4]"
           >
-            <ChevronLeft className="h-4 w-4" />
+
+            <ChevronLeft
+              className="h-4 w-4"
+            />
+
           </button>
 
 
@@ -454,10 +730,16 @@ export default function CapsuleAvailability({ onBook }) {
 
           <button
             type="button"
-            onClick={nextMonth}
+            onClick={
+              nextMonth
+            }
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#D7E7DE] text-[#0B4A2E] transition hover:bg-[#F1F8F4]"
           >
-            <ChevronRight className="h-4 w-4" />
+
+            <ChevronRight
+              className="h-4 w-4"
+            />
+
           </button>
 
         </div>
@@ -475,32 +757,47 @@ export default function CapsuleAvailability({ onBook }) {
             "Thu",
             "Fri",
             "Sat",
-          ].map((day) => (
-            <div
-              key={day}
-              className="py-2 text-center text-xs font-semibold text-[#7A9185]"
-            >
-              {day}
-            </div>
-          ))}
+          ].map(
+            (day) => (
+
+              <div
+                key={day}
+                className="py-2 text-center text-xs font-semibold text-[#7A9185]"
+              >
+                {day}
+              </div>
+
+            )
+          )}
 
 
           {/* Calendar Days */}
 
           {calendarDays.map(
-            (date, index) => {
+            (
+              date,
+              index
+            ) => {
 
               if (!date) {
+
                 return (
+
                   <div
                     key={`empty-${index}`}
                     className="min-h-[72px]"
                   />
+
                 );
+
               }
 
+
               const status =
-                getDateStatus(date);
+                getDateStatus(
+                  date
+                );
+
 
               const selected =
                 isSameDay(
@@ -508,25 +805,36 @@ export default function CapsuleAvailability({ onBook }) {
                   date
                 );
 
+
               return (
+
                 <button
-                  key={date.toISOString()}
+                  key={
+                    date.toISOString()
+                  }
                   type="button"
                   disabled={
-                    status === "past" ||
-                    status === "booked"
+                    status ===
+                      "past" ||
+                    status ===
+                      "booked"
                   }
                   onClick={() =>
-                    setSelectedDate(date)
+                    setSelectedDate(
+                      date
+                    )
                   }
                   className={`relative min-h-[72px] rounded-xl border p-2 text-left transition ${
                     selected
                       ? "border-[#0B4A2E] bg-[#EAF4EE] ring-2 ring-[#0B4A2E]/10"
-                      : status === "past"
+                      : status ===
+                        "past"
                       ? "cursor-not-allowed border-[#EEF2EF] bg-[#F8FAF9] opacity-50"
-                      : status === "booked"
+                      : status ===
+                        "booked"
                       ? "cursor-not-allowed border-red-100 bg-red-50/40"
-                      : status === "partial"
+                      : status ===
+                        "partial"
                       ? "border-[#E6D8B5] bg-[#FFF9E8] hover:border-[#CDAE63]"
                       : "border-[#DDEAE3] bg-[#F8FBF9] hover:border-[#B8D7C8] hover:bg-[#F1F8F4]"
                   }`}
@@ -547,47 +855,69 @@ export default function CapsuleAvailability({ onBook }) {
 
                   {status ===
                     "available" && (
+
                     <span className="mt-2 flex items-center gap-1 text-[10px] font-medium text-[#287A4B]">
-                      <CheckCircle2 className="h-3 w-3" />
+
+                      <CheckCircle2
+                        className="h-3 w-3"
+                      />
+
                       Available
+
                     </span>
+
                   )}
 
 
                   {status ===
                     "partial" && (
+
                     <span className="mt-2 block text-[10px] font-medium text-[#A47716]">
                       Limited
                     </span>
+
                   )}
 
 
                   {status ===
                     "booked" && (
+
                     <span className="mt-2 flex items-center gap-1 text-[10px] font-medium text-red-500">
-                      <XCircle className="h-3 w-3" />
-                      Booked
+
+                      <XCircle
+                        className="h-3 w-3"
+                      />
+
+                      Fully Booked
+
                     </span>
+
                   )}
 
 
-                  {status === "past" && (
+                  {status ===
+                    "past" && (
+
                     <span className="mt-2 block text-[10px] text-[#9AAAA2]">
                       Past
                     </span>
+
                   )}
 
                 </button>
+
               );
+
             }
           )}
 
         </div>
 
 
-  
+        {/* Calendar Legend */}
 
         <div className="mt-5 flex flex-wrap gap-4 border-t border-[#EEF3F0] pt-4">
+
 
           <div className="flex items-center gap-2 text-xs text-[#6F8E7F]">
 
@@ -637,6 +967,7 @@ export default function CapsuleAvailability({ onBook }) {
 
         <section className="rounded-2xl bg-white p-6 shadow-sm">
 
+
           {/* Header */}
 
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -645,7 +976,9 @@ export default function CapsuleAvailability({ onBook }) {
 
               <div className="flex items-center gap-2">
 
-                <CalendarDays className="h-5 w-5 text-[#0B4A2E]" />
+                <CalendarDays
+                  className="h-5 w-5 text-[#0B4A2E]"
+                />
 
                 <h3 className="font-semibold text-[#0B3B2A]">
                   Available Time Slots
@@ -670,144 +1003,233 @@ export default function CapsuleAvailability({ onBook }) {
             0 ? (
 
               availableCapsules.map(
-                (capsule) => {
+                (capsule) => (
 
-                  return (
-                    <div
-                      key={capsule.id}
-                      className="rounded-xl border border-[#DDEAE3] bg-[#F8FBF9] p-4"
-                    >
+                  <div
+                    key={
+                      capsule.id
+                    }
+                    className="rounded-xl border border-[#DDEAE3] bg-[#F8FBF9] p-4"
+                  >
 
-                      {/* Capsule Header */}
 
-                      <div className="flex flex-wrap items-center justify-between gap-3">
+                    {/* Capsule Header */}
 
-                        <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
 
-                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E5F2EB]">
+                      <div className="flex items-center gap-3">
 
-                            <BedSingle className="h-5 w-5 text-[#0B4A2E]" />
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E5F2EB]">
 
-                          </div>
-
-                          <div>
-
-                            <h4 className="font-semibold text-[#0B3B2A]">
-                              {capsule.name ||
-                                `Capsule ${capsule.id}`}
-                            </h4>
-
-                            <p className="text-xs text-[#7A9185]">
-                              {capsule.id}
-                            </p>
-
-                          </div>
+                          <BedSingle
+                            className="h-5 w-5 text-[#0B4A2E]"
+                          />
 
                         </div>
 
-                        <span className="rounded-full bg-[#EAF4EE] px-3 py-1 text-xs font-semibold text-[#287A4B]">
-                          Available
-                        </span>
+
+                        <div>
+
+                          <h4 className="font-semibold text-[#0B3B2A]">
+
+                            {capsule.name ||
+                              `Capsule ${capsule.id}`}
+
+                          </h4>
+
+                          <p className="text-xs text-[#7A9185]">
+                            {capsule.id}
+                          </p>
+
+                        </div>
 
                       </div>
 
 
-                      {/* Time Slots */}
+                      <span className="rounded-full bg-[#EAF4EE] px-3 py-1 text-xs font-semibold text-[#287A4B]">
+                        Availability
+                      </span>
 
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    </div>
 
-                        {timeSlots.map(
-                          (time) => {
 
-                            const booked =
-                              isSlotBooked(
-                                capsule.id,
+                    {/* Time Slots */}
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+                      {timeSlots.map(
+                        (time) => {
+
+                          const slotStatus =
+                            getSlotStatus(
+                              capsule.id,
+                              time.value
+                            );
+
+
+                          const unavailable =
+                            [
+                              "Booked",
+                              "Reserved",
+                              "Cleaning",
+                              "Maintenance",
+                            ].includes(
+                              slotStatus
+                            );
+
+
+                          return (
+
+                            <div
+                              key={
                                 time.value
-                              );
+                              }
+                              className={`rounded-xl border p-3 ${
+                                slotStatus ===
+                                "Booked"
+                                  ? "border-red-100 bg-red-50"
+                                  : slotStatus ===
+                                    "Reserved"
+                                  ? "border-[#E6D8B5] bg-[#FFF9E8]"
+                                  : slotStatus ===
+                                    "Cleaning"
+                                  ? "border-orange-100 bg-orange-50"
+                                  : slotStatus ===
+                                    "Maintenance"
+                                  ? "border-gray-200 bg-gray-100"
+                                  : "border-[#D7E7DE] bg-white"
+                              }`}
+                            >
 
-                            return (
-                              <div
-                                key={
-                                  time.value
-                                }
-                                className={`rounded-xl border p-3 ${
-                                  booked
-                                    ? "border-red-100 bg-red-50"
-                                    : "border-[#D7E7DE] bg-white"
-                                }`}
-                              >
 
-                                <div className="flex items-start gap-2">
+                              <div className="flex items-start gap-2">
 
-                                  <Clock
-                                    className={`mt-0.5 h-4 w-4 ${
-                                      booked
-                                        ? "text-red-400"
-                                        : "text-[#0B4A2E]"
-                                    }`}
-                                  />
+                                <Clock
+                                  className={`mt-0.5 h-4 w-4 ${
+                                    slotStatus ===
+                                    "Booked"
+                                      ? "text-red-400"
+                                      : slotStatus ===
+                                        "Reserved"
+                                      ? "text-[#A47716]"
+                                      : slotStatus ===
+                                        "Cleaning"
+                                      ? "text-orange-400"
+                                      : slotStatus ===
+                                        "Maintenance"
+                                      ? "text-gray-400"
+                                      : "text-[#0B4A2E]"
+                                  }`}
+                                />
 
-                                  <div className="min-w-0 flex-1">
 
-                                    <p className="text-xs font-semibold text-[#0B3B2A]">
-                                      {time.period}
-                                    </p>
+                                <div className="min-w-0 flex-1">
 
-                                    <p className="mt-0.5 text-[11px] text-[#6F8E7F]">
-                                      {time.label}
-                                    </p>
+                                  <p className="text-xs font-semibold text-[#0B3B2A]">
+                                    {time.period}
+                                  </p>
 
-                                  </div>
+                                  <p className="mt-0.5 text-[11px] text-[#6F8E7F]">
+                                    {time.label}
+                                  </p>
 
                                 </div>
 
-
-                                {booked ? (
-
-                                  <div className="mt-3 flex items-center gap-1 text-[11px] font-medium text-red-500">
-
-                                    <XCircle className="h-3 w-3" />
-
-                                    Booked
-
-                                  </div>
-
-                                ) : (
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleBook(
-                                        capsule,
-                                        time
-                                      )
-                                    }
-                                    className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg bg-[#0B4A2E] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#09391F]"
-                                  >
-
-                                    Book
-
-                                  </button>
-
-                                )}
-
                               </div>
-                            );
-                          }
-                        )}
 
-                      </div>
+
+                              {slotStatus ===
+                              "Available" ? (
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleBook(
+                                      capsule,
+                                      time
+                                    )
+                                  }
+                                  className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg bg-[#0B4A2E] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#09391F]"
+                                >
+                                  Book
+                                </button>
+
+                              ) : (
+
+                                <div
+                                  className={`mt-3 flex items-center gap-1 text-[11px] font-medium ${
+                                    slotStatus ===
+                                    "Booked"
+                                      ? "text-red-500"
+                                      : slotStatus ===
+                                        "Reserved"
+                                      ? "text-[#A47716]"
+                                      : slotStatus ===
+                                        "Cleaning"
+                                      ? "text-orange-500"
+                                      : "text-gray-500"
+                                  }`}
+                                >
+
+                                  {slotStatus ===
+                                    "Booked" && (
+                                    <XCircle
+                                      className="h-3 w-3"
+                                    />
+                                  )}
+
+
+                                  {slotStatus ===
+                                    "Reserved" && (
+                                    <Clock
+                                      className="h-3 w-3"
+                                    />
+                                  )}
+
+
+                                  {slotStatus ===
+                                    "Cleaning" && (
+                                    <Clock
+                                      className="h-3 w-3"
+                                    />
+                                  )}
+
+
+                                  {slotStatus ===
+                                    "Maintenance" && (
+                                    <XCircle
+                                      className="h-3 w-3"
+                                    />
+                                  )}
+
+
+                                  {slotStatus}
+
+                                </div>
+
+                              )}
+
+                            </div>
+
+                          );
+
+                        }
+                      )}
 
                     </div>
-                  );
-                }
+
+                  </div>
+
+                )
               )
 
             ) : (
 
               <div className="rounded-xl border border-dashed border-[#D7E7DE] bg-[#F8FBF9] px-6 py-12 text-center">
 
-                <BedSingle className="mx-auto h-10 w-10 text-[#9AAAA2]" />
+                <BedSingle
+                  className="mx-auto h-10 w-10 text-[#9AAAA2]"
+                />
 
                 <p className="mt-3 font-semibold text-[#0B3B2A]">
                   No capsules available
@@ -824,6 +1246,7 @@ export default function CapsuleAvailability({ onBook }) {
           </div>
 
         </section>
+
       )}
 
 
@@ -835,7 +1258,9 @@ export default function CapsuleAvailability({ onBook }) {
 
         <div className="rounded-2xl border border-dashed border-[#D7E7DE] bg-white px-6 py-12 text-center shadow-sm">
 
-          <CalendarDays className="mx-auto h-10 w-10 text-[#9AAAA2]" />
+          <CalendarDays
+            className="mx-auto h-10 w-10 text-[#9AAAA2]"
+          />
 
           <p className="mt-3 font-semibold text-[#0B3B2A]">
             Select a date to view availability
@@ -851,5 +1276,7 @@ export default function CapsuleAvailability({ onBook }) {
       )}
 
     </div>
+
   );
+
 }

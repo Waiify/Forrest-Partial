@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
 
 
+import LandingPage from './LandingPage.jsx'
 import Login from './loginPage.jsx'
 import StaffSignup from './staffSignup.jsx'
 import CustomerSignUp from './CustomerSignUp.jsx'
@@ -20,6 +21,7 @@ import StaffDashboard from './StaffDashboard.jsx'
 import StaffSpacesandServicesManagement from './StaffSpacesandServicesManagement.jsx'
 import StaffSpacesandServicesAvailability from './StaffSpacesandServicesAvailability.jsx'
 import AdminSettings from './AdminSettings.jsx'
+import AdminReports from './AdminReports.jsx'
 import StaffReservation from './StaffReservations.jsx'
 
 
@@ -29,8 +31,8 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
      <Routes>
-        {/* Directly open the login page / Direkta nga abli ang login page. */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        {/* Landing page (public home page) */}
+        <Route path="/" element={<LandingPage />} />
 
         {/* Usa ra ka login para sa customer, staff, ug admin. */}
         <Route path="/login" element={<Login />} />
@@ -52,6 +54,8 @@ createRoot(document.getElementById('root')).render(
         <Route path="/reservation" element={<AdminReservation />} />
         <Route path="/AdminReservation" element={<Navigate to="/reservation" replace />} />
         <Route path="/settings" element={<AdminSettings />} />
+        <Route path="/reports" element={<AdminReports />} />
+       
         <Route path="/staff-dashboard" element={<StaffDashboard />} />
         <Route path="/StaffDashboard" element={<StaffDashboard />} />
         <Route path="/StaffSpacesandServicesManagement" element={<StaffSpacesandServicesManagement />} />
@@ -67,8 +71,8 @@ createRoot(document.getElementById('root')).render(
         <Route path="/capsules" element={<Navigate to="/capsule" replace />} />
         <Route path="/admincapsule" element={<AdminCapsule />} />
 
-        {/* Fallback route / If no route matches, go back to login page. */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        {/* Fallback route / If no route matches, go to the landing page. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </BrowserRouter>
   </StrictMode>,
