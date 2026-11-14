@@ -22,6 +22,20 @@ import ActivityLog from "./ActivityLog.jsx";
 
 import { CAPSULES, RESERVATIONS, getUser } from "./dashboardData.js";
 
+function dateInputValue(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function timeInputValue(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export default function CustomerDashboard() {
   /* =====================================================
       BASIC STATES
@@ -396,7 +410,7 @@ export default function CustomerDashboard() {
   ====================================================== */
 
   const reservations = filteredReservations.filter((r) =>
-    ["Pending", "Confirmed", "Active"].includes(r.status)
+    ["Pending", "Confirmed", "Checked in", "Active"].includes(r.status)
   );
 
   /* =====================================================
@@ -424,7 +438,7 @@ export default function CustomerDashboard() {
   ).length;
 
   const activeCount = reservationList.filter(
-    (r) => r.status === "Active"
+    (r) => ["Active", "Checked in"].includes(r.status)
   ).length;
 
   const completedCount = reservationList.filter(
@@ -661,9 +675,9 @@ export default function CustomerDashboard() {
     console.log("Reschedule reservation:", reservation);
 
     setSelectedReservation(reservation);
-    setRescheduleDate(reservation.date || "");
-    setRescheduleStartTime(reservation.checkIn || "");
-    setRescheduleEndTime(reservation.checkOut || "");
+    setRescheduleDate(dateInputValue(reservation.startAt));
+    setRescheduleStartTime(timeInputValue(reservation.startAt));
+    setRescheduleEndTime(timeInputValue(reservation.endAt));
     setIsRescheduling(true);
     setDetailSource("My Reservation");
     setActive("My Reservation");
@@ -673,8 +687,46 @@ export default function CustomerDashboard() {
       SAVE RESCHEDULE
   ====================================================== */
 
-  const handleSaveReschedule = () => {
+  const handleSaveReschedule = async () => {
     if (!selectedReservation) return;
+
+    const start = new Date(`${rescheduleDate}T${rescheduleStartTime}:00`);
+    const end = new Date(`${rescheduleDate}T${rescheduleEndTime}:00`);
+    const durationHours = (end.getTime() - start.getTime()) / (60 * 60 * 1000);
+    if (
+      Number.isNaN(start.getTime())
+      || !Number.isFinite(durationHours)
+      || durationHours < 0.5
+      || durationHours > 24
+    ) {
+      alert("Enter a valid reservation time from 30 minutes to 24 hours.");
+      return;
+    }
+
+    let response;
+    let data;
+    try {
+      response = await fetch(
+        `http://localhost:5000/api/reservations/${selectedReservation.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            startAt: start.toISOString(),
+            durationHours,
+          }),
+        },
+      );
+      data = await response.json();
+    } catch (error) {
+      console.error("Reschedule reservation error:", error);
+      alert("Unable to connect to the server. Please try again.");
+      return;
+    }
+    if (!response.ok) {
+      alert(data.message || "Could not reschedule reservation.");
+      return;
+    }
 
     const oldDate = selectedReservation.date;
     const oldStartTime = selectedReservation.checkIn;
@@ -682,9 +734,23 @@ export default function CustomerDashboard() {
 
     const updatedReservation = {
       ...selectedReservation,
-      date: rescheduleDate,
-      checkIn: rescheduleStartTime,
-      checkOut: rescheduleEndTime,
+      date: new Date(data.startAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }) + ` (${new Date(data.startAt).toLocaleDateString("en-US", { weekday: "short" })})`,
+      checkIn: new Date(data.startAt).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      checkOut: new Date(data.endAt).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      startAt: data.startAt,
+      endAt: data.endAt,
+      durationHours: data.durationHours,
+      totalPrice: data.totalPrice,
     };
 
     setReservationList((prev) =>
@@ -695,11 +761,7 @@ export default function CustomerDashboard() {
 
     const activity = {
       action: "Reservation Rescheduled",
-      details:
-        `Schedule changed from ${oldDate}, ` +
-        `${oldStartTime} - ${oldEndTime} ` +
-        `to ${rescheduleDate}, ` +
-        `${rescheduleStartTime} - ${rescheduleEndTime}.`,
+      details: `Schedule changed from ${oldDate}, ${oldStartTime} - ${oldEndTime} to ${updatedReservation.date}, ${updatedReservation.checkIn} - ${updatedReservation.checkOut}.`,
       timestamp: new Date().toLocaleString(),
     };
 

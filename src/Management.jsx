@@ -4,7 +4,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const RAW_API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
+const API_URL = RAW_API.endsWith("/api") ? RAW_API : `${RAW_API}/api`;
 const ACTION_LABELS = {
   view: "View",
   create: "Add",
@@ -32,6 +33,11 @@ function readCurrentUserId() {
   } catch {
     return "";
   }
+}
+
+function adminHeaders() {
+  const token = sessionStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function formatDate(value) {
@@ -123,6 +129,7 @@ function CreateUserForm({ onCreate }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("staff");
+  const [adminCode, setAdminCode] = useState("");
   const [permissions, setPermissions] = useState(emptyPermissions);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -142,12 +149,14 @@ function CreateUserForm({ onCreate }) {
         password: generatedPassword,
         role,
         permissions: role === "staff" ? permissions : {},
+        ...(role === "admin" ? { adminCode } : {}),
       });
       if (!password) setCreatedPassword(generatedPassword);
       setFirstName("");
       setLastName("");
       setEmail("");
       setPassword("");
+      setAdminCode("");
       setRole("staff");
       setPermissions(emptyPermissions());
     } catch (createError) {
@@ -164,9 +173,20 @@ function CreateUserForm({ onCreate }) {
         Create a customer, staff member, or administrator. Staff access is limited to the permissions selected below.
       </p>
       {role === "admin" && (
-        <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          Administrator accounts have full system access and must sign in with the configured admin code.
-        </p>
+        <div className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          <p>Administrator accounts have full system access. Confirm this change with your admin code.</p>
+          <label className="mt-3 block font-medium">
+            Admin code
+            <input
+              required
+              type="password"
+              value={adminCode}
+              onChange={(event) => setAdminCode(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 font-normal"
+              autoComplete="current-password"
+            />
+          </label>
+        </div>
       )}
       {createdPassword && (
         <p role="status" className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
@@ -253,11 +273,23 @@ function CreateUserForm({ onCreate }) {
   );
 }
 
-function UserTable({ users, currentUserId, onToggleStatus, onSavePermissions }) {
+function UserTable({ users, currentUserId, onToggleStatus, onUpdateAccess }) {
   const [editingUser, setEditingUser] = useState(null);
   const [draftPermissions, setDraftPermissions] = useState(emptyPermissions);
+  const [draftRole, setDraftRole] = useState("staff");
+  const [adminCode, setAdminCode] = useState("");
   const [savingId, setSavingId] = useState("");
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const activeAdminCount = users.filter((user) => user.role === "admin" && user.status === "active").length;
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch = `${user.name} ${user.email}`.toLowerCase().includes(search.trim().toLowerCase());
+    return matchesSearch
+      && (roleFilter === "all" || user.role === roleFilter)
+      && (statusFilter === "all" || user.status === statusFilter);
+  });
 
   useEffect(() => {
     if (!editingUser) return undefined;
@@ -268,11 +300,35 @@ function UserTable({ users, currentUserId, onToggleStatus, onSavePermissions }) 
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [editingUser, savingId]);
 
-  async function savePermissions(user) {
+  function openAccessEditor(user) {
+    setError("");
+    setDraftRole(user.role);
+    setDraftPermissions({ ...emptyPermissions(), ...user.permissions });
+    setAdminCode("");
+    setEditingUser(user);
+  }
+
+  async function saveAccess(user) {
+    const roleChanged = draftRole !== user.role;
+    if (roleChanged) {
+      const nextRole = draftRole === "admin" ? "Administrator" : draftRole;
+      if (!window.confirm(`Change ${user.name}'s account type from ${user.role} to ${nextRole}?`)) {
+        return;
+      }
+    }
+    if (draftRole === "admin" && user.role !== "admin" && !adminCode.trim()) {
+      setError("Enter your admin code to grant administrator access.");
+      return;
+    }
+
     setSavingId(user._id);
     setError("");
     try {
-      await onSavePermissions(user._id, draftPermissions);
+      await onUpdateAccess(user._id, {
+        role: draftRole,
+        ...(draftRole === "staff" ? { permissions: draftPermissions } : {}),
+        ...(draftRole === "admin" && user.role !== "admin" ? { adminCode } : {}),
+      });
       setEditingUser(null);
     } catch (saveError) {
       setError(saveError.message);
@@ -287,6 +343,43 @@ function UserTable({ users, currentUserId, onToggleStatus, onSavePermissions }) 
         <h2 className="text-base font-semibold text-[#0B3B2A]">User accounts</h2>
         <span className="text-sm text-slate-500">{users.length} total</span>
       </div>
+      <div className="grid gap-3 border-b border-slate-200 p-4 sm:grid-cols-3">
+        <label className="text-xs font-medium text-slate-600">
+          Search users
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Name or email"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal"
+          />
+        </label>
+        <label className="text-xs font-medium text-slate-600">
+          Account type
+          <select
+            value={roleFilter}
+            onChange={(event) => setRoleFilter(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal"
+          >
+            <option value="all">All account types</option>
+            <option value="customer">Customers</option>
+            <option value="staff">Staff</option>
+            <option value="admin">Administrators</option>
+          </select>
+        </label>
+        <label className="text-xs font-medium text-slate-600">
+          Status
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal"
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </label>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[700px] text-left text-sm">
           <thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase text-slate-500">
@@ -300,10 +393,11 @@ function UserTable({ users, currentUserId, onToggleStatus, onSavePermissions }) 
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {users.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">No user accounts found.</td></tr>
-            ) : users.map((user) => {
+            {filteredUsers.length === 0 ? (
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">No user accounts match these filters.</td></tr>
+            ) : filteredUsers.map((user) => {
               const isSelf = String(user._id) === currentUserId;
+              const isLastActiveAdmin = user.role === "admin" && user.status === "active" && activeAdminCount <= 1;
               return (
                 <tr key={user._id}>
                   <td className="px-4 py-3 font-medium text-slate-800">{user.name}</td>
@@ -317,14 +411,10 @@ function UserTable({ users, currentUserId, onToggleStatus, onSavePermissions }) 
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-3">
-                      {user.role === "staff" && (
+                      {!isSelf && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setError("");
-                            setDraftPermissions({ ...emptyPermissions(), ...user.permissions });
-                            setEditingUser(user);
-                          }}
+                          onClick={() => openAccessEditor(user)}
                           className="text-xs font-medium text-[#0B3B2A] hover:underline"
                         >
                           Manage access
@@ -336,10 +426,15 @@ function UserTable({ users, currentUserId, onToggleStatus, onSavePermissions }) 
                         <button
                           type="button"
                           onClick={() => onToggleStatus(user)}
+                          disabled={isLastActiveAdmin}
+                          title={isLastActiveAdmin ? "The last active admin cannot be disabled." : undefined}
                           className="text-xs font-medium text-slate-600 hover:text-slate-900"
                         >
                           {user.status === "active" ? "Disable" : "Enable"}
                         </button>
+                      )}
+                      {isLastActiveAdmin && !isSelf && (
+                        <span className="text-xs text-slate-400">Last active admin</span>
                       )}
                     </div>
                   </td>
@@ -365,7 +460,7 @@ function UserTable({ users, currentUserId, onToggleStatus, onSavePermissions }) 
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
                 <h2 id="manage-access-title" className="text-lg font-semibold text-[#0B3B2A]">
-                  Manage staff access
+                  Manage user access
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
                   {editingUser.name} · {editingUser.email}
@@ -381,12 +476,48 @@ function UserTable({ users, currentUserId, onToggleStatus, onSavePermissions }) 
                 ×
               </button>
             </div>
-            <PermissionEditor
-              value={draftPermissions}
-              onChange={setDraftPermissions}
-              showSave={false}
-              error={error}
-            />
+            <label className="block text-sm font-medium text-slate-700">
+              Account type
+              <select
+                value={draftRole}
+                onChange={(event) => setDraftRole(event.target.value)}
+                disabled={editingUser.role === "admin" && editingUser.status === "active" && activeAdminCount <= 1}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-normal"
+              >
+                <option value="customer">Customer</option>
+                <option value="staff">Staff</option>
+                <option value="admin" disabled={editingUser.role === "admin" && editingUser.status === "active" && activeAdminCount <= 1}>
+                  Administrator
+                </option>
+              </select>
+            </label>
+            {editingUser.role === "admin" && editingUser.status === "active" && activeAdminCount <= 1 && (
+              <p className="mt-2 text-xs text-amber-700">This is the last active admin, so its role cannot be changed.</p>
+            )}
+            {draftRole === "admin" && editingUser.role !== "admin" && (
+              <label className="mt-4 block text-sm font-medium text-slate-700">
+                Admin code required to grant full system access
+                <input
+                  type="password"
+                  value={adminCode}
+                  onChange={(event) => setAdminCode(event.target.value)}
+                  autoComplete="current-password"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-normal"
+                />
+              </label>
+            )}
+            {draftRole === "staff" && (
+              <div className="mt-4">
+                <h3 className="mb-2 text-sm font-semibold text-slate-700">Staff permissions</h3>
+                <PermissionEditor
+                  value={draftPermissions}
+                  onChange={setDraftPermissions}
+                  showSave={false}
+                  error={error}
+                />
+              </div>
+            )}
+            {draftRole !== "staff" && error && <p className="mt-3 text-xs text-red-700" role="alert">{error}</p>}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
@@ -398,7 +529,7 @@ function UserTable({ users, currentUserId, onToggleStatus, onSavePermissions }) 
               </button>
               <button
                 type="button"
-                onClick={() => savePermissions(editingUser)}
+                onClick={() => saveAccess(editingUser)}
                 disabled={savingId === editingUser._id}
                 className="rounded-lg bg-[#0B3B2A] px-3 py-2 text-sm font-semibold text-white hover:bg-[#14543D] disabled:opacity-50"
               >
@@ -426,7 +557,7 @@ export default function Management() {
 
   useEffect(() => {
     let activeRequest = true;
-    fetch(`${API_URL}/admin/users`)
+    fetch(`${API_URL}/admin/users`, { headers: adminHeaders() })
       .then((response) => readResponse(response, "Failed to load user accounts."))
       .then((data) => {
         if (activeRequest) setUsers(data);
@@ -444,7 +575,7 @@ export default function Management() {
     const created = await readResponse(
       await fetch(`${API_URL}/admin/users`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...adminHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(user),
       }),
       "Could not create account."
@@ -456,7 +587,7 @@ export default function Management() {
     const updated = await readResponse(
       await fetch(`${API_URL}/admin/users/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...adminHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(update),
       }),
       "Could not update account."
@@ -474,9 +605,16 @@ export default function Management() {
     ) {
       return;
     }
+    const adminCode = user.role === "admin" && nextStatus === "active"
+      ? window.prompt("Enter your admin code to restore administrator access.")
+      : null;
+    if (user.role === "admin" && nextStatus === "active" && adminCode === null) return;
     setActionError("");
     try {
-      await updateUser(user._id, { status: nextStatus });
+      await updateUser(user._id, {
+        status: nextStatus,
+        ...(adminCode ? { adminCode } : {}),
+      });
     } catch (error) {
       setActionError(error.message);
     }

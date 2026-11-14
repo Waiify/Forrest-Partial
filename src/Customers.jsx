@@ -3,6 +3,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
+import StaffHeader from "./components/StaffHeader.jsx";
+import StaffSidebar from "./components/StaffSidebar.jsx";
+import { readSessionUser } from "./permissionUtils.js";
 
 const STATUS_CONFIG = {
   active: { label: "Active", dot: "bg-blue-500", text: "text-blue-700" },
@@ -83,6 +86,7 @@ function ReservationsTable({ reservations, loading, error }) {
 export default function Customers() {
   const navigate = useNavigate();
   const location = useLocation();
+  const isStaff = readSessionUser()?.role === "staff";
 
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +127,19 @@ export default function Customers() {
     navigate("/dashboard");
   }
 
+  function handleStaffNavigate(section) {
+    const routes = {
+      Dashboard: "/StaffDashboard",
+      StaffSpacesandServicesManagement: "/StaffSpacesandServicesManagement",
+      StaffSpacesandServicesAvailability: "/StaffSpacesandServicesAvailability",
+      StaffReservation: "/StaffReservation",
+      StaffReservationHistory: "/StaffReservationHistory",
+      StaffQRScanner: "/StaffQRScanner",
+      StaffSystemLogs: "/StaffSystemLogs",
+    };
+    navigate(routes[section] ?? "/StaffDashboard");
+  }
+
   useEffect(() => {
     fetch("http://localhost:5000/api/users")
       .then((res) => {
@@ -147,10 +164,18 @@ export default function Customers() {
 
   return (
     <div className="flex h-screen w-full bg-slate-50 text-slate-900">
-      <Sidebar active={active} onNavigate={handleNavigate} />
+      {isStaff ? (
+        <StaffSidebar active="Customers" onNavigate={handleStaffNavigate} />
+      ) : (
+        <Sidebar active={active} onNavigate={handleNavigate} />
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Header active={active} />
+        {isStaff ? (
+          <StaffHeader active="Customers" subtitle="Manage customer records and activity" />
+        ) : (
+          <Header active={active} />
+        )}
 
         <main className="flex-1 overflow-y-auto p-6">
           <ReservationsTable reservations={reservations} loading={loading} error={error} />

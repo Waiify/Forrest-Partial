@@ -185,6 +185,8 @@ export default function AdminReports() {
   const [type, setType] = useState("all");
   const [method, setMethod] = useState("all");
 
+  const driveEnabled = settings?.googleDriveEnabled !== false && driveStatus?.enabled !== false;
+
   function handleNavigate(section) {
     if (section === "Customers") return navigate("/customers");
     if (section === "Settings") return navigate("/settings");
@@ -296,6 +298,8 @@ export default function AdminReports() {
         setNotice("PDF downloaded, but Google Drive could not save a copy.");
       } else if (driveUploadStatus === "not-connected") {
         setNotice("PDF downloaded. Google Drive is not connected; ask an admin to connect it.");
+      } else if (driveUploadStatus === "disabled") {
+        setNotice("PDF downloaded. Google Drive is turned off in Settings.");
       } else {
         setNotice("PDF downloaded.");
       }
@@ -349,7 +353,9 @@ export default function AdminReports() {
               <div className="flex flex-wrap items-center gap-2">
                 {canExport && driveStatus && (
                   <span className="text-xs text-[#6F8E7F]">
-                    {driveStatus.error
+                    {!driveEnabled
+                      ? "Google Drive is turned off in Settings"
+                      : driveStatus.error
                       ? "Google Drive status unavailable"
                       : driveStatus.connected
                         ? "Google Drive connected"
@@ -358,7 +364,7 @@ export default function AdminReports() {
                           : "Google Drive needs server configuration"}
                   </span>
                 )}
-                {canExport && isAdmin && (
+                {canExport && isAdmin && driveEnabled && (
                   <button
                     type="button"
                     onClick={connectDrive}

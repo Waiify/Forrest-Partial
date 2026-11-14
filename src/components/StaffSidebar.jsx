@@ -8,10 +8,12 @@ import {
   Users,
   BarChart3,
   ShieldCheck,
+  QrCode,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import logo from "../assets/logo.jpg";
 import { readSessionUser, userHasPermission } from "../permissionUtils.js";
+import useSettings from "../useSettings2.js";
 
 const NAV_SECTIONS = [
   {
@@ -40,6 +42,7 @@ const NAV_SECTIONS = [
     items: [
       { id: "StaffReservation", label: "Reservation", icon: FileText, permission: ["reservations", "view"] },
       { id: "StaffReservationHistory", label: "Reservation History", icon: History, permission: ["reservations", "view"] },
+      { id: "StaffQRScanner", label: "QR Scanner", icon: QrCode, permission: ["reservations", "update"] },
     ],
   },
   {
@@ -59,9 +62,13 @@ const NAV_SECTIONS = [
 export default function StaffSidebar({ active, onNavigate }) {
   const navigate = useNavigate();
   const user = readSessionUser();
+  const settings = useSettings();
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter(({ permission }) => !permission || userHasPermission(user, ...permission)),
+    items: section.items.filter(({ id, permission }) => (
+      (id !== "StaffQRScanner" || !settings.settingsLoaded || settings.qrCodeEnabled !== false)
+      && (!permission || userHasPermission(user, ...permission))
+    )),
   })).filter((section) => section.items.length > 0);
 
   return (

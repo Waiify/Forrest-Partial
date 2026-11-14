@@ -107,7 +107,7 @@ module.exports = function registerAuditLog(app, { mongoose, User, requireAuditAc
     profile:     '^profile\\.',
     reservation: '^reservation\\.',
     payment:     '^payment\\.',
-    admin:       '^(settings|staff)\\.',
+    admin:       '^(settings|staff|user)\\.',
   };
 
   function pageParams(req, base) {
@@ -134,11 +134,14 @@ module.exports = function registerAuditLog(app, { mongoose, User, requireAuditAc
     'reservation.create': 'Created reservation',
     'reservation.reschedule': 'Rescheduled reservation',
     'reservation.status': 'Changed reservation status',
+    'reservation.checkin': 'Checked in to reservation',
     'payment.paid': 'Marked payment paid',
     'payment.refunded': 'Marked payment refunded',
     'payment.unpaid': 'Marked payment unpaid',
     'staff.create': 'Created staff account',
     'staff.status': 'Changed staff account status',
+    'user.create': 'Created user account',
+    'user.access_updated': 'Updated user access',
     'settings.update': 'Updated settings',
     'capsule.create': 'Created capsule',
     'capsule.update': 'Updated capsule',

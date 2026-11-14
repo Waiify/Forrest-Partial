@@ -28,6 +28,7 @@ function getActivityDescription(item) {
     "reservation.create": "Created reservation",
     "reservation.reschedule": "Rescheduled reservation",
     "reservation.status": "Changed reservation status",
+    "reservation.checkin": "Checked in to reservation",
     "payment.paid": "Marked payment paid",
     "payment.refunded": "Marked payment refunded",
     "payment.unpaid": "Marked payment unpaid",

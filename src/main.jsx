@@ -25,6 +25,7 @@ import StaffSpacesandServicesAvailability from './StaffSpacesandServicesAvailabi
 import AdminSettings from './AdminSettings.jsx'
 import AdminReports from './AdminReports.jsx'
 import StaffReservation from './StaffReservations.jsx'
+import StaffQRScanner from './StaffQRScanner.jsx'
 import AdminauditLogs from './AdminauditLogs.jsx'
 import StaffLogs from './StaffLogs.jsx'
 
@@ -64,6 +65,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/StaffSpacesandServicesAvailability" element={<StaffPermissionGate resource="spaces" action="view"><StaffSpacesandServicesAvailability /></StaffPermissionGate>} />
         <Route path="/StaffReservation" element={<StaffPermissionGate resource="reservations" action="view"><StaffReservation /></StaffPermissionGate>} />
         <Route path="/StaffReservationHistory" element={<StaffPermissionGate resource="reservations" action="view"><StaffReservation /></StaffPermissionGate>} />
+        <Route path="/StaffQRScanner" element={<StaffPermissionGate resource="reservations" action="update"><StaffQRScanner /></StaffPermissionGate>} />
         <Route path="/StaffSystemLogs" element={<StaffLogs />} />
         <Route path="/customers" element={<StaffPermissionGate resource="customers" action="view"><Customers /></StaffPermissionGate>} />
 

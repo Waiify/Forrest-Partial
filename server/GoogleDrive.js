@@ -5,7 +5,14 @@ const { OAuth2Client } = require('google-auth-library');
 
 const fetch = (...args) => import('node-fetch').then(({ default: fetchImpl }) => fetchImpl(...args));
 const CONNECTION_ID = 'forrest-reports';
-const ACCOUNT_EMAIL = (process.env.GOOGLE_DRIVE_ACCOUNT_EMAIL || 'forestcoworkingspace2026@gmail.com').trim().toLowerCase();
+const DEFAULT_ACCOUNT_EMAIL = 'forestcoworkingspace2026@gmail.com';
+const DRIVE_CREDENTIAL_FIELDS = {
+  clientId: 'CLIENT_ID',
+  clientSecret: 'CLIENT_SECRET',
+  redirectUri: 'REDIRECT_URI',
+  encryptionKey: 'TOKEN_ENCRYPTION_KEY',
+  accountEmail: 'ACCOUNT_EMAIL',
+};
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
 const SUPPORTED_MIME_TYPES = new Set([
@@ -19,7 +26,14 @@ function configurationError(message) {
   return Object.assign(new Error(message), { status: 503 });
 }
 
-module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogin, requirePermission }) {
+module.exports = function registerGoogleDrive(app, {
+  mongoose,
+  User,
+  requireLogin,
+  requirePermission,
+  getSettings,
+  setEnvVar,
+}) {
   const connectionSchema = new mongoose.Schema({
     _id: { type: String, default: CONNECTION_ID },
     encryptedTokens: { type: String, required: true },
@@ -38,11 +52,133 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
   const DriveOAuthState = mongoose.models.GoogleDriveOAuthState
     || mongoose.model('GoogleDriveOAuthState', oauthStateSchema);
 
+  function readCredentialSet(prefix) {
+    return Object.fromEntries(
+      Object.entries(DRIVE_CREDENTIAL_FIELDS).map(([field, suffix]) => [
+        field,
+        process.env[`${prefix}GOOGLE_DRIVE_${suffix}`] || '',
+      ])
+    );
+  }
+
+  function hasCustomCredentials() {
+    return Object.values(DRIVE_CREDENTIAL_FIELDS).every((suffix) =>
+      Boolean(process.env[`CUSTOM_GOOGLE_DRIVE_${suffix}`])
+    );
+  }
+
+  function activeCredentialSource() {
+    return process.env.GOOGLE_DRIVE_CREDENTIALS_SOURCE === 'custom' && hasCustomCredentials()
+      ? 'custom'
+      : 'original';
+  }
+
+  function getCredentialValues(source = activeCredentialSource()) {
+    if (source === 'custom') return readCredentialSet('CUSTOM_');
+    const values = readCredentialSet('');
+    if (!values.accountEmail) values.accountEmail = DEFAULT_ACCOUNT_EMAIL;
+    return values;
+  }
+
+  function validateCredentials(values) {
+    if (!values.clientId || !values.clientSecret || !values.redirectUri || !values.encryptionKey || !values.accountEmail) {
+      throw new Error('Enter all five Google Drive credentials before saving custom credentials.');
+    }
+    if (!/^[\da-f]{64}$/i.test(values.encryptionKey)) {
+      throw new Error('The Google Drive token encryption key must be 64 hexadecimal characters.');
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.accountEmail)) {
+      throw new Error('Enter a valid Google Drive account email address.');
+    }
+
+    let callback;
+    try {
+      callback = new URL(values.redirectUri);
+    } catch {
+      throw new Error('Google Drive redirect URI must be an absolute URL.');
+    }
+    if (callback.protocol !== 'https:' && !(callback.protocol === 'http:' && callback.hostname === 'localhost')) {
+      throw new Error('Google Drive redirect URI must use HTTPS, except for localhost development.');
+    }
+  }
+
+  function maskedPreview(values) {
+    return Object.entries({
+      'Client ID': values.clientId,
+      'Client secret': values.clientSecret,
+      'Redirect URI': values.redirectUri,
+      'Token encryption key': values.encryptionKey,
+      'Account email': values.accountEmail,
+    }).map(([label, value]) => {
+      if (!value) return `${label}: not configured`;
+      if (label === 'Client secret' || label === 'Token encryption key') {
+        return `${label}: ${'•'.repeat(Math.max(0, value.length - 4))}${value.slice(-4)}`;
+      }
+      const visible = Math.ceil(value.length / 2);
+      return `${label}: ${value.slice(0, visible)}${'•'.repeat(value.length - visible)}`;
+    }).join('\n');
+  }
+
+  function getCredentialStatus() {
+    const source = activeCredentialSource();
+    const original = getCredentialValues('original');
+    const custom = getCredentialValues('custom');
+    const active = source === 'custom' ? custom : original;
+    return {
+      source,
+      hasCustom: hasCustomCredentials(),
+      keySet: Boolean(active.clientId && active.clientSecret && active.redirectUri && active.encryptionKey),
+      preview: maskedPreview(active),
+      originalPreview: maskedPreview(original),
+      customPreview: maskedPreview(custom),
+    };
+  }
+
+  function saveCustomCredentials(input) {
+    const current = getCredentialValues('custom');
+    const next = { ...current };
+    for (const [field, suffix] of Object.entries(DRIVE_CREDENTIAL_FIELDS)) {
+      const key = `CUSTOM_GOOGLE_DRIVE_${suffix}`;
+      if (Object.prototype.hasOwnProperty.call(input, key)) {
+        if (typeof input[key] !== 'string') throw new Error(`${key} must be a string.`);
+        const value = input[key].trim();
+        if (value) next[field] = value;
+      }
+    }
+    validateCredentials(next);
+
+    const hasChanges = Object.entries(DRIVE_CREDENTIAL_FIELDS).some(([field, suffix]) =>
+      next[field] !== current[field]
+    );
+    if (!hasChanges && activeCredentialSource() === 'custom') {
+      throw new Error('No Google Drive credentials changed.');
+    }
+
+    for (const suffix of Object.values(DRIVE_CREDENTIAL_FIELDS)) {
+      const field = Object.keys(DRIVE_CREDENTIAL_FIELDS).find((key) => DRIVE_CREDENTIAL_FIELDS[key] === suffix);
+      setEnvVar(`CUSTOM_GOOGLE_DRIVE_${suffix}`, next[field]);
+    }
+    setEnvVar('GOOGLE_DRIVE_CREDENTIALS_SOURCE', 'custom');
+    return getCredentialStatus();
+  }
+
+  function switchCredentialSource(source) {
+    if (!['original', 'custom'].includes(source)) {
+      throw new Error('source must be "original" or "custom"');
+    }
+    if (source === 'custom') {
+      if (!hasCustomCredentials()) {
+        throw new Error('Save all five custom Google Drive credentials before switching to them.');
+      }
+      validateCredentials(getCredentialValues('custom'));
+    }
+    setEnvVar('GOOGLE_DRIVE_CREDENTIALS_SOURCE', source);
+    return getCredentialStatus();
+  }
+
   function getConfiguration() {
-    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-    const redirectUri = process.env.GOOGLE_DRIVE_REDIRECT_URI;
-    const encryptionKey = process.env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY;
+    const values = getCredentialValues();
+    const { clientId, clientSecret, redirectUri, encryptionKey, accountEmail } = values;
 
     if (!clientId || !clientSecret || !redirectUri) {
       throw configurationError('Google Drive OAuth is not configured on the server.');
@@ -66,6 +202,7 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
       clientSecret,
       redirectUri,
       encryptionKey: Buffer.from(encryptionKey, 'hex'),
+      accountEmail: accountEmail.trim().toLowerCase(),
     };
   }
 
@@ -100,7 +237,14 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
 
   async function saveTokens(incomingTokens, accountEmail) {
     const existing = await DriveConnection.findById(CONNECTION_ID);
-    const previousTokens = existing?.encryptedTokens ? decryptTokens(existing.encryptedTokens) : {};
+    let previousTokens = {};
+    if (existing?.encryptedTokens) {
+      try {
+        previousTokens = decryptTokens(existing.encryptedTokens);
+      } catch {
+        console.warn('Replacing Google Drive tokens that cannot be decrypted with the active encryption key.');
+      }
+    }
     const storedTokens = Object.fromEntries(
       Object.entries(incomingTokens).filter(([key]) =>
         ['access_token', 'refresh_token', 'scope', 'token_type', 'expiry_date'].includes(key)
@@ -137,7 +281,7 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
     const configuration = getConfiguration();
     const connection = await DriveConnection.findById(CONNECTION_ID);
     if (!connection) return null;
-    if (connection.accountEmail.toLowerCase() !== ACCOUNT_EMAIL) {
+    if (connection.accountEmail.toLowerCase() !== configuration.accountEmail) {
       throw new Error('The saved Google Drive connection does not match the designated account.');
     }
 
@@ -214,6 +358,7 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
     if (typeof filename !== 'string' || !filename.trim() || /[/\\\r\n]/.test(filename)) {
       throw new TypeError('A valid report filename is required.');
     }
+    if ((await getSettings()).googleDriveEnabled === false) return { status: 'disabled' };
 
     const connected = await getConnectionClient();
     if (!connected) return { status: 'not-connected' };
@@ -245,17 +390,31 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
 
   app.get('/api/drive/status', requireLogin, requirePermission('reports', 'export'), async (req, res) => {
     try {
+      const enabled = (await getSettings()).googleDriveEnabled !== false;
+      let configuration;
       let configured = false;
       try {
-        getConfiguration();
+        configuration = getConfiguration();
         configured = true;
       } catch (err) {
         if (err.status !== 503) throw err;
       }
       const connection = configured ? await DriveConnection.findById(CONNECTION_ID).select('accountEmail') : null;
+      let connected = Boolean(
+        connection && connection.accountEmail.toLowerCase() === configuration.accountEmail
+      );
+      if (connected) {
+        try {
+          const storedConnection = await DriveConnection.findById(CONNECTION_ID);
+          decryptTokens(storedConnection.encryptedTokens);
+        } catch {
+          connected = false;
+        }
+      }
       res.json({
+        enabled,
         configured,
-        connected: Boolean(connection && connection.accountEmail.toLowerCase() === ACCOUNT_EMAIL),
+        connected,
         accountEmail: connection?.accountEmail || null,
       });
     } catch (err) {
@@ -269,6 +428,9 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
       if (req.authUser.role !== 'admin') {
         return res.status(403).json({ message: 'Only an admin can connect the Forrest Google Drive account.' });
       }
+      if ((await getSettings()).googleDriveEnabled === false) {
+        return res.status(403).json({ message: 'Google Drive integration is currently disabled.' });
+      }
       const configuration = getConfiguration();
       const state = crypto.randomBytes(32).toString('hex');
       await DriveOAuthState.create({
@@ -281,7 +443,7 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
         access_type: 'offline',
         prompt: 'consent',
         include_granted_scopes: true,
-        login_hint: ACCOUNT_EMAIL,
+        login_hint: configuration.accountEmail,
         scope: [DRIVE_SCOPE, 'openid', 'email'],
         state,
       });
@@ -312,6 +474,9 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
         status: { $ne: 'disabled' },
       }).select('_id').lean();
       if (!admin) return res.status(403).send('Only an active admin can connect Google Drive.');
+      if ((await getSettings()).googleDriveEnabled === false) {
+        return res.status(403).send('Google Drive integration is currently disabled.');
+      }
 
       const configuration = getConfiguration();
       const client = createOAuthClient(configuration);
@@ -320,8 +485,8 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
       const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: configuration.clientId });
       const identity = ticket.getPayload();
       const email = identity?.email?.toLowerCase();
-      if (!identity?.email_verified || email !== ACCOUNT_EMAIL) {
-        return res.status(403).send(`Authorize Google Drive with ${ACCOUNT_EMAIL}.`);
+      if (!identity?.email_verified || email !== configuration.accountEmail) {
+        return res.status(403).send(`Authorize Google Drive with ${configuration.accountEmail}.`);
       }
 
       await saveTokens(tokens, email);
@@ -334,5 +499,11 @@ module.exports = function registerGoogleDrive(app, { mongoose, User, requireLogi
     }
   });
 
-  return { uploadReportToDrive };
+  return {
+    uploadReportToDrive,
+    getCredentialStatus,
+    getCredentialValues,
+    saveCustomCredentials,
+    switchCredentialSource,
+  };
 };

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Cloud, QrCode } from "lucide-react";
 
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
@@ -140,6 +141,22 @@ const GROUPS = [
         Logo: GoogleMapsLogo,
         sourceNoun: "key",
         description: "Show Google Maps on the public landing page.",
+      },
+      {
+        key: "googleDriveEnabled",
+        label: "Google Drive",
+        Logo: Cloud,
+        description: "Save exported financial reports to the connected Google Drive account.",
+        confirmOff:
+          "PDF reports will still download, but new copies will not be saved to Google Drive.",
+      },
+      {
+        key: "qrCodeEnabled",
+        label: "Reservation QR codes",
+        Logo: QrCode,
+        description: "Issue customer reservation QR codes and allow staff to scan them for check-in.",
+        confirmOff:
+          "Customers will no longer see reservation QR codes, and staff QR check-in will be disabled.",
       },
     ],
   },
@@ -342,7 +359,7 @@ function SourceCards({ label, noun, state, disabled, onChange, originalHint, cus
             <p className="mt-0.5 text-xs text-[#6F8E7F]">{card.hint}</p>
 
             <p
-              className={`mt-3 flex min-h-[2.5rem] items-center break-all rounded-lg border border-[#CFE3D9] bg-white px-3 py-2 text-xs ${
+              className={`mt-3 flex min-h-[2.5rem] items-center break-all whitespace-pre-line rounded-lg border border-[#CFE3D9] bg-white px-3 py-2 text-xs ${
                 preview ? "font-mono text-[#0B3B2A]" : "italic text-[#9DB5A8]"
               }`}
             >
@@ -679,6 +696,24 @@ export default function AdminSettings() {
     preview: "",
   });
   const [mapsKeyInput, setMapsKeyInput] = useState("");
+  const [googleDriveCredentials, setGoogleDriveCredentials] = useState({
+    source: "original",
+    hasCustom: false,
+    keySet: false,
+    preview: "",
+  });
+  const [googleDriveInputs, setGoogleDriveInputs] = useState({
+    clientId: "",
+    clientSecret: "",
+    redirectUri: "",
+    encryptionKey: "",
+    accountEmail: "",
+  });
+  const [googleDriveValues, setGoogleDriveValues] = useState(null);
+  const [googleDriveValuesSource, setGoogleDriveValuesSource] = useState("");
+  const [googleDriveRevealBusy, setGoogleDriveRevealBusy] = useState(false);
+  const [showDriveClientSecret, setShowDriveClientSecret] = useState(false);
+  const [showDriveEncryptionKey, setShowDriveEncryptionKey] = useState(false);
   const [apiKeyBusy, setApiKeyBusy] = useState("");
   const [apiKeyMessages, setApiKeyMessages] = useState({});
 
@@ -719,6 +754,29 @@ export default function AdminSettings() {
       customPreview: data?.customPreview || "",
     });
     setMapsKeyInput("");
+  }
+
+  function applyGoogleDriveCredentials(data) {
+    setGoogleDriveCredentials({
+      source: data?.source === "custom" ? "custom" : "original",
+      hasCustom: Boolean(data?.hasCustom),
+      keySet: Boolean(data?.keySet),
+      preview: data?.preview || "",
+      originalPreview: data?.originalPreview || "",
+      customPreview: data?.customPreview || "",
+    });
+    setGoogleDriveInputs({
+      clientId: "",
+      clientSecret: "",
+      redirectUri: "",
+      encryptionKey: "",
+      accountEmail: "",
+    });
+    setGoogleDriveValues(null);
+    setGoogleDriveValuesSource("");
+    setGoogleDriveRevealBusy(false);
+    setShowDriveClientSecret(false);
+    setShowDriveEncryptionKey(false);
   }
 
   function applyGoogleAuthKey(data) {
@@ -773,6 +831,18 @@ export default function AdminSettings() {
     setSecret("");
     setGoogleAuthKeyInput("");
     setMapsKeyInput("");
+    setGoogleDriveInputs({
+      clientId: "",
+      clientSecret: "",
+      redirectUri: "",
+      encryptionKey: "",
+      accountEmail: "",
+    });
+    setGoogleDriveValues(null);
+    setGoogleDriveValuesSource("");
+    setGoogleDriveRevealBusy(false);
+    setShowDriveClientSecret(false);
+    setShowDriveEncryptionKey(false);
     setCredsLoading(true);
   }, []);
 
@@ -977,6 +1047,7 @@ export default function AdminSettings() {
         applyEmail(data);
         applyCaptcha(data.recaptcha);
         applyMapsKey(data.googleMaps);
+        applyGoogleDriveCredentials(data.googleDrive);
         applyGoogleAuthKey(data.googleAuth);
       })
       .catch((err) => {
@@ -1179,6 +1250,81 @@ export default function AdminSettings() {
     setModal({ kind: target });
   }
 
+  async function switchGoogleDriveSource(source) {
+    if (Object.values(googleDriveInputs).some((value) => value.trim())) {
+      const ok = await confirmDialog({
+        title: "Discard unsaved credentials?",
+        text: "The Google Drive credential values you entered will be lost.",
+        confirmText: "Discard",
+      });
+      if (!ok) return;
+    }
+
+    setApiKeyMessages((messages) => ({ ...messages, googleDrive: null }));
+    setApiKeyBusy("googleDrive");
+    try {
+      const data = await readResponse(
+        await request(`${API}/settings/credentials/source`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ target: "googleDrive", source }),
+        })
+      );
+      applyGoogleDriveCredentials(data.googleDrive);
+      setApiKeyMessages((messages) => ({
+        ...messages,
+        googleDrive: {
+          type: "ok",
+          text: `Now using the ${source} Google Drive credentials.`,
+        },
+      }));
+      notifySuccess(`Switched to the ${source} Google Drive credentials`, 1500);
+    } catch (err) {
+      setApiKeyMessages((messages) => ({
+        ...messages,
+        googleDrive: { type: "error", text: err.message || "Could not switch Google Drive credentials." },
+      }));
+    } finally {
+      setApiKeyBusy("");
+    }
+  }
+
+  async function revealGoogleDriveCredentials(source) {
+    if (googleDriveValues && googleDriveValuesSource === source) {
+      setGoogleDriveValues(null);
+      setGoogleDriveValuesSource("");
+      return;
+    }
+    setGoogleDriveRevealBusy(true);
+    setGoogleDriveValues(null);
+    setGoogleDriveValuesSource("");
+    setApiKeyMessages((messages) => ({ ...messages, googleDrive: null }));
+    try {
+      const data = await readResponse(
+        await request(`${API}/settings/credentials/reveal?field=googleDrive&source=${source}`, {
+          headers: authHeaders(),
+        })
+      );
+      setGoogleDriveValues(data.value);
+      setGoogleDriveValuesSource(source);
+    } catch (err) {
+      setApiKeyMessages((messages) => ({
+        ...messages,
+        googleDrive: { type: "error", text: err.message || "Could not reveal Google Drive credentials." },
+      }));
+    } finally {
+      setGoogleDriveRevealBusy(false);
+    }
+  }
+
+  function requestSaveGoogleDriveCredentials(event) {
+    event.preventDefault();
+    if (!Object.values(googleDriveInputs).some((value) => value.trim())) return;
+    setApiKeyMessages((messages) => ({ ...messages, googleDrive: null }));
+    setModalError("");
+    setModal({ kind: "googleDrive" });
+  }
+
   // ---- Admin code dialog: runs the pending action, the server verifies the code ----
   async function confirmModal(code) {
     if (!modal) return;
@@ -1210,13 +1356,27 @@ export default function AdminSettings() {
         applyCaptcha(data.recaptcha);
         setCaptchaMsg({ type: "ok", text: "Saved. This custom secret key is now in use." });
         notifySuccess("reCAPTCHA secret key saved");
-      } else if (modal.kind === "googleAuth" || modal.kind === "googleMaps") {
+      } else if (
+        modal.kind === "googleAuth"
+        || modal.kind === "googleMaps"
+        || modal.kind === "googleDrive"
+      ) {
         const isGoogleAuth = modal.kind === "googleAuth";
-        const body = {
-          adminCode: code,
-          [isGoogleAuth ? "CUSTOM_FIREBASE_API_KEY" : "CUSTOM_GOOGLE_MAPS_API_KEY"]:
-            (isGoogleAuth ? googleAuthKeyInput : mapsKeyInput).trim(),
-        };
+        const isGoogleDrive = modal.kind === "googleDrive";
+        const body = isGoogleDrive
+          ? {
+              adminCode: code,
+              CUSTOM_GOOGLE_DRIVE_CLIENT_ID: googleDriveInputs.clientId.trim(),
+              CUSTOM_GOOGLE_DRIVE_CLIENT_SECRET: googleDriveInputs.clientSecret.trim(),
+              CUSTOM_GOOGLE_DRIVE_REDIRECT_URI: googleDriveInputs.redirectUri.trim(),
+              CUSTOM_GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY: googleDriveInputs.encryptionKey.trim(),
+              CUSTOM_GOOGLE_DRIVE_ACCOUNT_EMAIL: googleDriveInputs.accountEmail.trim(),
+            }
+          : {
+              adminCode: code,
+              [isGoogleAuth ? "CUSTOM_FIREBASE_API_KEY" : "CUSTOM_GOOGLE_MAPS_API_KEY"]:
+                (isGoogleAuth ? googleAuthKeyInput : mapsKeyInput).trim(),
+            };
         const data = await readResponse(
           await request(`${API}/settings/credentials`, {
             method: "PATCH",
@@ -1224,21 +1384,31 @@ export default function AdminSettings() {
             body: JSON.stringify(body),
           })
         );
-        if (isGoogleAuth) applyGoogleAuthKey(data.googleAuth);
+        if (isGoogleDrive) applyGoogleDriveCredentials(data.googleDrive);
+        else if (isGoogleAuth) applyGoogleAuthKey(data.googleAuth);
         else applyMapsKey(data.googleMaps);
-        notifySuccess(isGoogleAuth ? "Firebase API key saved" : "Google Maps API key saved", 1500);
+        notifySuccess(
+          isGoogleDrive
+            ? "Google Drive credentials saved"
+            : isGoogleAuth
+              ? "Firebase API key saved"
+              : "Google Maps API key saved",
+          1500,
+        );
         setApiKeyMessages((messages) => ({
           ...messages,
           [modal.kind]: {
             type: "ok",
-            text: "Saved and switched to the custom key. Reloading to apply it...",
+            text: isGoogleDrive
+              ? "Saved and switched to custom credentials. If the encryption key changed, reconnect Google Drive."
+              : "Saved and switched to the custom key. Reloading to apply it...",
           },
         }));
-        window.setTimeout(() => window.location.reload(), 1600);
+        if (!isGoogleDrive) window.setTimeout(() => window.location.reload(), 1600);
       }
       setModal(null);
     } catch (err) {
-      if (modal.kind === "googleAuth" || modal.kind === "googleMaps") {
+      if (["googleAuth", "googleMaps", "googleDrive"].includes(modal.kind)) {
         setApiKeyMessages((messages) => ({
           ...messages,
           [modal.kind]: { type: "error", text: err.message || "Could not save the API key." },
@@ -1270,15 +1440,22 @@ export default function AdminSettings() {
               description: "Enter your admin code to save this as the custom reCAPTCHA secret key.",
               confirmLabel: "Save secret key",
             }
-          : {
-              title: modal.kind === "googleAuth" ? "Save Firebase API key" : "Save Google Maps API key",
-              description: "Enter your admin code to save and activate this custom API key.",
-              confirmLabel: "Save API key",
-            };
+          : modal.kind === "googleDrive"
+            ? {
+                title: "Save Google Drive credentials",
+                description: "Enter your admin code to save and activate these custom credentials.",
+                confirmLabel: "Save credentials",
+              }
+            : {
+                title: modal.kind === "googleAuth" ? "Save Firebase API key" : "Save Google Maps API key",
+                description: "Enter your admin code to save and activate this custom API key.",
+                confirmLabel: "Save API key",
+              };
 
   /* ---------------------------- Expandable panels --------------------------- */
 
   const credsDisabled = credsLoading || apiKeyBusy !== "";
+  const googleDriveInputsDirty = Object.values(googleDriveInputs).some((value) => value.trim());
 
   const captchaPanel = (
     <ApiKeyPanel
@@ -1326,6 +1503,184 @@ export default function AdminSettings() {
       onSwitch={(source) => switchApiKeySource("googleMaps", source)}
       onSave={(event) => requestSaveApiKey(event, "googleMaps")}
     />
+  );
+
+  const googleDrivePanel = (
+    <div className="space-y-5">
+      <p className="max-w-xl text-sm text-[#6F8E7F]">
+        Manage the OAuth client, callback URL, token encryption key, and designated Google account used for report backups.
+        Changing the token encryption key requires reconnecting Google Drive.
+      </p>
+
+      <SourceCards
+        label="Google Drive credentials in use"
+        noun="credentials"
+        state={googleDriveCredentials}
+        disabled={credsDisabled}
+        onChange={switchGoogleDriveSource}
+        originalHint="GOOGLE_DRIVE_* values from server/.env"
+        customHint="Custom values saved from this page"
+      />
+
+      <div className="space-y-3 rounded-xl border border-[#DCEBE3] bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-[#0B3B2A]">Google Drive credentials</p>
+            <p className="mt-0.5 text-xs text-[#6F8E7F]">
+              Values are hidden until explicitly revealed. Revealing is recorded in the audit log.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={credsLoading || googleDriveRevealBusy}
+              onClick={() => revealGoogleDriveCredentials(googleDriveCredentials.source)}
+              className="rounded-lg border border-[#CFE3D9] px-3 py-2 text-xs font-semibold text-[#2F8060] hover:bg-[#F3F9F5] disabled:opacity-60"
+            >
+              {googleDriveRevealBusy
+                ? "Loading..."
+                : googleDriveValuesSource === googleDriveCredentials.source
+                  ? "Hide active credentials"
+                  : "Show active credentials"}
+            </button>
+            {googleDriveCredentials.hasCustom && googleDriveCredentials.source !== "custom" && (
+              <button
+                type="button"
+                disabled={credsLoading || googleDriveRevealBusy}
+                onClick={() => revealGoogleDriveCredentials("custom")}
+                className="rounded-lg border border-[#CFE3D9] px-3 py-2 text-xs font-semibold text-[#2F8060] hover:bg-[#F3F9F5] disabled:opacity-60"
+              >
+                {googleDriveValuesSource === "custom" ? "Hide custom credentials" : "Show custom credentials"}
+              </button>
+            )}
+          </div>
+        </div>
+        {googleDriveValues && (
+          <dl className="grid gap-3 rounded-lg bg-[#F8FBF9] p-3 text-xs sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <dt className="font-semibold text-[#5F7F70]">Source</dt>
+              <dd className="mt-1 text-[#0B3B2A]">
+                {googleDriveValuesSource === "custom" ? "Custom" : "Original"}
+              </dd>
+            </div>
+            {[
+              ["OAuth client ID", googleDriveValues.clientId],
+              ["OAuth client secret", googleDriveValues.clientSecret],
+              ["Redirect URI", googleDriveValues.redirectUri],
+              ["Token encryption key", googleDriveValues.encryptionKey],
+              ["Google account email", googleDriveValues.accountEmail],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-0">
+                <dt className="font-semibold text-[#5F7F70]">{label}</dt>
+                <dd className="mt-1 break-all font-mono text-[#0B3B2A]">{value || "Not configured"}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+
+      <form
+        onSubmit={requestSaveGoogleDriveCredentials}
+        className="space-y-4 rounded-xl border border-dashed border-[#CFE3D9] bg-white p-4"
+      >
+        <p className="text-sm font-medium text-[#0B3B2A]">
+          {googleDriveCredentials.hasCustom ? "Edit custom credentials" : "Create custom credentials"}
+        </p>
+
+        <div>
+          <label htmlFor="drive-client-id" className="block text-sm font-medium text-[#0B3B2A]">
+            OAuth client ID
+          </label>
+          <input
+            id="drive-client-id"
+            value={googleDriveInputs.clientId}
+            disabled={credsDisabled}
+            placeholder={googleDriveCredentials.hasCustom ? "Leave blank to keep the saved value" : "Enter OAuth client ID"}
+            onChange={(event) => setGoogleDriveInputs((current) => ({ ...current, clientId: event.target.value }))}
+            className={`mt-1 ${inputClass}`}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="drive-client-secret" className="block text-sm font-medium text-[#0B3B2A]">
+            OAuth client secret
+          </label>
+          <SecretInput
+            id="drive-client-secret"
+            value={googleDriveInputs.clientSecret}
+            shown={showDriveClientSecret}
+            disabled={credsDisabled}
+            placeholder={googleDriveCredentials.hasCustom ? "Leave blank to keep the saved value" : "Enter OAuth client secret"}
+            onChange={(value) => setGoogleDriveInputs((current) => ({ ...current, clientSecret: value }))}
+            onToggle={() => setShowDriveClientSecret((shown) => !shown)}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="drive-redirect-uri" className="block text-sm font-medium text-[#0B3B2A]">
+            Redirect URI
+          </label>
+          <input
+            id="drive-redirect-uri"
+            type="url"
+            value={googleDriveInputs.redirectUri}
+            disabled={credsDisabled}
+            placeholder={googleDriveCredentials.hasCustom ? "Leave blank to keep the saved value" : "https://your-api.example/api/drive/oauth2callback"}
+            onChange={(event) => setGoogleDriveInputs((current) => ({ ...current, redirectUri: event.target.value }))}
+            className={`mt-1 ${inputClass}`}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="drive-encryption-key" className="block text-sm font-medium text-[#0B3B2A]">
+            Token encryption key (64 hex characters)
+          </label>
+          <SecretInput
+            id="drive-encryption-key"
+            value={googleDriveInputs.encryptionKey}
+            shown={showDriveEncryptionKey}
+            disabled={credsDisabled}
+            placeholder={googleDriveCredentials.hasCustom ? "Leave blank to keep the saved value" : "Enter the 64-character encryption key"}
+            onChange={(value) => setGoogleDriveInputs((current) => ({ ...current, encryptionKey: value }))}
+            onToggle={() => setShowDriveEncryptionKey((shown) => !shown)}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="drive-account-email" className="block text-sm font-medium text-[#0B3B2A]">
+            Designated Google account email
+          </label>
+          <input
+            id="drive-account-email"
+            type="email"
+            value={googleDriveInputs.accountEmail}
+            disabled={credsDisabled}
+            placeholder={googleDriveCredentials.hasCustom ? "Leave blank to keep the saved value" : "Enter the Google account authorized for Drive"}
+            onChange={(event) => setGoogleDriveInputs((current) => ({ ...current, accountEmail: event.target.value }))}
+            className={`mt-1 ${inputClass}`}
+          />
+        </div>
+
+        {apiKeyMessages.googleDrive && (
+          <p
+            role="status"
+            className={`text-sm ${apiKeyMessages.googleDrive.type === "ok" ? "text-[#2F9E7A]" : "text-red-700"}`}
+          >
+            {apiKeyMessages.googleDrive.text}
+          </p>
+        )}
+
+        <div className="flex justify-end border-t border-[#EEF3F0] pt-4">
+          <button
+            type="submit"
+            disabled={credsDisabled || !googleDriveInputsDirty}
+            className={primaryButton}
+          >
+            Save custom credentials
+          </button>
+        </div>
+      </form>
+    </div>
   );
 
   const emailPanel = (
@@ -1422,6 +1777,7 @@ export default function AdminSettings() {
     recaptchaEnabled: captchaPanel,
     emailEnabled: emailPanel,
     googleMapsEnabled: mapsKeyPanel,
+    googleDriveEnabled: googleDrivePanel,
   };
 
   const sources = {
@@ -1429,6 +1785,7 @@ export default function AdminSettings() {
     recaptchaEnabled: captcha.source,
     emailEnabled: creds.source,
     googleMapsEnabled: mapsKey.source,
+    googleDriveEnabled: googleDriveCredentials.source,
   };
 
   const unlockTimeText = `${Math.floor(unlockRemaining / 60)}:${String(unlockRemaining % 60).padStart(2, "0")}`;

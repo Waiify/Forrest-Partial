@@ -12,6 +12,8 @@ const DEFAULTS = {
   pdfExportEnabled: true,
   recaptchaEnabled: true,
   emailEnabled: true,
+  googleDriveEnabled: true,
+  qrCodeEnabled: true,
   settingsLoaded: false,
 };
 
