@@ -15,7 +15,6 @@ const ROUTES = {
   StaffSpacesandServicesAvailability: "/StaffSpacesandServicesAvailability",
   StaffReservation: "/StaffReservation",
   StaffReservationHistory: "/StaffReservationHistory",
-  StaffQRScanner: "/StaffQRScanner",
   StaffSystemLogs: "/StaffSystemLogs",
 };
 
@@ -25,21 +24,12 @@ const PAGE_TITLES = {
   StaffSpacesandServicesAvailability: "Spaces and Services Availability",
   StaffReservation: "Reservation",
   StaffReservationHistory: "Reservation History",
-  StaffQRScanner: "QR Scanner",
   StaffSystemLogs: "System Logs",
 };
 
-
-const SOURCES = [
-  { url: `${API}/capsules?archived=false`, category: "Capsule Pods" },
-  { url: `${API}/study-rooms?archived=false`, category: "Study Room" },
-  { url: `${API}/vip-rooms?archived=false`, category: "VIP Room" },
-  { url: `${API}/conference-rooms?archived=false`, category: "Conference Room" },
-  { url: `${API}/life-rooms?archived=false`, category: "Life Room" },
-  { url: `${API}/board-rooms?archived=false`, category: "Board Room" },
-];
-
-const CATEGORY_ORDER = [
+// These rooms always show a card, in this order, even when empty.
+// Any other room found in the database appears after them (A-Z).
+const DEFAULT_ROOMS = [
   "Study Room",
   "Capsule Pods",
   "VIP Room",
@@ -93,26 +83,15 @@ function formatCurrency(value) {
   }).format(Number(value) || 0);
 }
 
-const ROOM_ALIASES = {
-  "Room 1": "Capsule Pods",
-};
-
-function mapRecord(c, fixedCategory) {
-  const category =
-    fixedCategory ??
-    ROOM_ALIASES[c.room] ??
-    c.room ??
-    c.category ??
-    c.categoryName ??
-    "Capsule Pods";
-
+// Converts a database document into the shape this page uses.
+// The server tags every document with the room (collection) it came from.
+function mapRecord(c) {
   return {
-    id: `${category}-${
-      c.capsuleId ?? c.roomId ?? c.spaceId ?? c.id ?? c.capsuleName ?? c.name
-    }`,
-    name: c.capsuleName ?? c.roomName ?? c.spaceName ?? c.name,
+    id: `${c.room}-${c.capsuleId}`,
+    serviceId: c.capsuleId,
+    name: c.capsuleName,
     status: c.status,
-    category,
+    category: c.room,
     image: c.image,
   };
 }
@@ -212,7 +191,7 @@ function SpaceStatus({ rooms, categories, loading, onView }) {
     <section className="mt-6 rounded-2xl bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-5">
         <div>
-          <h2 className="text-lg font-semibold text-[#0B3B2A]">Capsule status</h2>
+          <h2 className="text-lg font-semibold text-[#0B3B2A]">Services status</h2>
           <p className="text-xs text-[#6F8E7F]">Updates automatically as reservations change</p>
         </div>
         <span className="text-xs text-[#6F8E7F]">Update statuses from the Spaces and Services Management page</span>
@@ -270,7 +249,8 @@ export default function StaffDashboard() {
   const location = useLocation();
 
   const [spaces, setSpaces] = useState([]);
-  const [categories, setCategories] = useState([]);
+  // Start with the default rooms so cards show right away
+  const [categories, setCategories] = useState(DEFAULT_ROOMS);
   const [loading, setLoading] = useState(true);
   const [reservations, setReservations] = useState([]);
   const [reservationsLoading, setReservationsLoading] = useState(true);
@@ -288,48 +268,44 @@ export default function StaffDashboard() {
     navigate(ROUTES.StaffSpacesandServicesManagement, { state: { category } });
   }
 
-  // Load on open, then refresh every 5 seconds
+  
   useEffect(() => {
     let current = true;
 
     async function loadSpaces(showLoading = false) {
       if (showLoading) setLoading(true);
 
-      const results = await Promise.allSettled(
-        SOURCES.map(async ({ url, category }) => {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`${url} -> ${res.status}`);
-          const data = await res.json();
-          if (!Array.isArray(data)) throw new Error(`${url} did not return a list`);
-          return { category, rows: data.map((c) => mapRecord(c, category)) };
-        })
-      );
+      try {
+        const [spacesRes, roomsRes] = await Promise.all([
+          fetch(`${API}/capsules?archived=false&scope=all`),
+          fetch(`${API}/capsules/rooms`).catch(() => null),
+        ]);
 
-      if (!current) return;
+        if (!spacesRes.ok) throw new Error(`capsules -> ${spacesRes.status}`);
+        const data = await spacesRes.json();
+        if (!Array.isArray(data)) throw new Error("capsules did not return a list");
 
-      const all = [];
-      const found = new Set();
+        const rows = data.map(mapRecord);
 
-      results.forEach((result, i) => {
-        if (result.status === "fulfilled") {
-          const { category, rows } = result.value;
-          all.push(...rows);
-          if (category) found.add(category);
-        } else {
-          console.warn(`Skipped ${SOURCES[i].url}:`, result.reason);
+        let serverRooms = [];
+        if (roomsRes && roomsRes.ok) {
+          const list = await roomsRes.json();
+          if (Array.isArray(list)) serverRooms = list;
         }
-      });
 
-      all.forEach((r) => found.add(r.category));
+        if (!current) return;
 
-      const ordered = [
-        ...CATEGORY_ORDER.filter((c) => found.has(c)),
-        ...[...found].filter((c) => !CATEGORY_ORDER.includes(c)),
-      ];
+        const extras = [...new Set([...serverRooms, ...rows.map((r) => r.category)])]
+          .filter((r) => r && !DEFAULT_ROOMS.includes(r))
+          .sort((a, b) => a.localeCompare(b));
 
-      setSpaces(all);
-      setCategories(ordered);
-      setLoading(false);
+        setSpaces(rows);
+        setCategories([...DEFAULT_ROOMS, ...extras]);
+      } catch (err) {
+        console.warn("Could not load services:", err);
+      } finally {
+        if (current) setLoading(false);
+      }
     }
 
     loadSpaces(true);
@@ -369,14 +345,9 @@ export default function StaffDashboard() {
     };
   }, []);
 
-  // capsuleId -> capsule name
-  const capsuleNames = useMemo(
-    () =>
-      new Map(
-        spaces
-          .filter((r) => r.category === "Capsule Pods")
-          .map((r) => [r.id.replace("Capsule Pods-", ""), r.name])
-      ),
+  // service id -> service name (every room)
+  const serviceNames = useMemo(
+    () => new Map(spaces.map((r) => [r.serviceId, r.name])),
     [spaces]
   );
 
@@ -398,17 +369,16 @@ export default function StaffDashboard() {
     .filter((r) => r.paymentStatus === "Paid")
     .reduce((sum, r) => sum + (Number(r.totalPrice) || 0), 0);
 
-  // Counts from real data (capsules only)
-  const capsules = spaces.filter((r) => r.category === "Capsule Pods");
-  const availableCount = capsules.filter((r) => r.status === "Available").length;
-  const occupiedCount = capsules.filter((r) => r.status === "Occupied").length;
+  // Counts from real data (all services, every room)
+  const availableCount = spaces.filter((r) => r.status === "Available").length;
+  const occupiedCount = spaces.filter((r) => r.status === "Occupied").length;
 
   /* null = no data yet (shows a dash) */
   const reservationsReady = !reservationsLoading && !reservationsError;
   const stats = [
     { label: "Today's reservations", value: reservationsReady ? todayReservations.length : null, icon: CalendarCheck, tint: "bg-[#F0B65A]/40" },
-    { label: "Occupied capsules", value: occupiedCount, icon: BedSingle, tint: "bg-[#B27DEB]/35" },
-    { label: "Available capsules", value: availableCount, icon: DoorOpen, tint: "bg-[#86D0BB]/60" },
+    { label: "Occupied services", value: occupiedCount, icon: BedSingle, tint: "bg-[#B27DEB]/35" },
+    { label: "Available services", value: availableCount, icon: DoorOpen, tint: "bg-[#86D0BB]/60" },
     { label: "Revenue today", value: reservationsReady ? formatCurrency(revenueToday) : null, icon: Banknote, tint: "bg-[#CFE3D9]" },
   ];
 
@@ -442,7 +412,7 @@ export default function StaffDashboard() {
                 <thead>
                   <tr className="bg-[#F5FAF7] text-xs text-[#4E6B5D]">
                     <th className="px-6 py-3 font-medium">Guest</th>
-                    <th className="px-6 py-3 font-medium">Capsule</th>
+                    <th className="px-6 py-3 font-medium">Service</th>
                     <th className="px-6 py-3 font-medium">Check-in</th>
                     <th className="px-6 py-3 text-right font-medium">Check-out</th>
                   </tr>
@@ -475,7 +445,7 @@ export default function StaffDashboard() {
                           <p className="mt-0.5 text-xs text-[#6F8E7F]">{r.guestEmail}</p>
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 font-medium text-[#315D49]">
-                          {capsuleNames.get(r.capsuleId) || r.capsuleId}
+                          {serviceNames.get(r.capsuleId) || r.capsuleId}
                         </td>
                         <td className="whitespace-nowrap px-6 py-4 text-[#315D49]">
                           {formatDateTime(r.startAt)}

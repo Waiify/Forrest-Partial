@@ -25,18 +25,9 @@ const PAGE_TITLES = {
   StaffSystemLogs: "System Logs",
 };
 
-
-const SOURCES = [
-  { url: `${API}/capsules?archived=false`, category: "Capsule Pods" },
-  { url: `${API}/study-rooms?archived=false`, category: "Study Room" },
-  { url: `${API}/vip-rooms?archived=false`, category: "VIP Room" },
-  { url: `${API}/conference-rooms?archived=false`, category: "Conference Room" },
-  { url: `${API}/life-rooms?archived=false`, category: "Life Room" },
-  { url: `${API}/board-rooms?archived=false`, category: "Board Room" },
-];
-
-// Card order on the page. Categories not listed here appear after these.
-const CATEGORY_ORDER = [
+// These rooms always show a card, in this order, even when empty.
+// Any other room found in the database appears after them (A-Z).
+const DEFAULT_ROOMS = [
   "Study Room",
   "Capsule Pods",
   "VIP Room",
@@ -67,26 +58,14 @@ const STATUS_CONFIG = {
 
 const MAX_TILES = 3;
 
-const ROOM_ALIASES = {
-  "Room 1": "Capsule Pods",
-};
-
-function mapRecord(c, fixedCategory) {
-  const category =
-    fixedCategory ??
-    ROOM_ALIASES[c.room] ??
-    c.room ??
-    c.category ??
-    c.categoryName ??
-    "Capsule Pods";
-
+// Converts a database document into the shape this page uses.
+// The server tags every document with the room (collection) it came from.
+function mapRecord(c) {
   return {
-    id: `${category}-${
-      c.capsuleId ?? c.roomId ?? c.spaceId ?? c.id ?? c.capsuleName ?? c.name
-    }`,
-    name: c.capsuleName ?? c.roomName ?? c.spaceName ?? c.name,
+    id: `${c.room}-${c.capsuleId}`,
+    name: c.capsuleName,
     status: c.status,
-    category,
+    category: c.room,
     image: c.image,
   };
 }
@@ -141,7 +120,7 @@ function CategoryCard({ title, rooms, onView }) {
 
       {shown.length === 0 ? (
         <div className="py-6 text-center text-[12px] text-white/80">
-          No spaces to show
+          No services to show
         </div>
       ) : (
         <div className="flex flex-wrap justify-center gap-3">
@@ -196,10 +175,6 @@ function SpaceStatus({ rooms, categories, loading, onView }) {
           <div className="py-10 text-center text-sm text-slate-400">
             Loading...
           </div>
-        ) : categories.length === 0 ? (
-          <div className="py-10 text-center text-sm text-slate-400">
-            No spaces found in the database.
-          </div>
         ) : (
           <div className="grid grid-cols-1 gap-x-8 gap-y-6 md:grid-cols-2">
             {categories.map((category) => (
@@ -222,7 +197,8 @@ export default function StaffSpacesandServicesAvailability() {
   const location = useLocation();
 
   const [spaces, setSpaces] = useState([]);
-  const [categories, setCategories] = useState([]);
+  // Start with the default rooms so cards show right away
+  const [categories, setCategories] = useState(DEFAULT_ROOMS);
   const [loading, setLoading] = useState(true);
 
   const active =
@@ -234,53 +210,50 @@ export default function StaffSpacesandServicesAvailability() {
     navigate(ROUTES[section] ?? ROUTES.StaffSpacesandServicesAvailability);
   }
 
-  // "View" / "View All" -> go to the management page for that category
+  // "View" / "View All" -> go to the management page for that room
   function handleView(category) {
     navigate(ROUTES.StaffSpacesandServicesManagement, {
       state: { category },
     });
   }
 
-  // Fetch every source in parallel. A source that fails is skipped,
-  // so only what really exists in the database is shown.
+  // One request returns the active spaces of EVERY room (each room is its own
+  // collection on the server). A second request gets all room names, so a new
+  // room shows its card even before it has any spaces.
   async function loadSpaces(showLoading = false) {
     if (showLoading) setLoading(true);
 
-    const results = await Promise.allSettled(
-      SOURCES.map(async ({ url, category }) => {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`${url} -> ${res.status}`);
-        const data = await res.json();
-        if (!Array.isArray(data)) throw new Error(`${url} did not return a list`);
-        return { category, rows: data.map((c) => mapRecord(c, category)) };
-      })
-    );
+    try {
+      const [spacesRes, roomsRes] = await Promise.all([
+        fetch(`${API}/capsules?archived=false&scope=all`),
+        fetch(`${API}/capsules/rooms`).catch(() => null),
+      ]);
 
-    const all = [];
-    const found = new Set();
+      if (!spacesRes.ok) throw new Error(`capsules -> ${spacesRes.status}`);
+      const data = await spacesRes.json();
+      if (!Array.isArray(data)) throw new Error("capsules did not return a list");
 
-    results.forEach((result, i) => {
-      if (result.status === "fulfilled") {
-        const { category, rows } = result.value;
-        all.push(...rows);
-        // The endpoint exists, so its card should show even if it has no rows
-        if (category) found.add(category);
-      } else {
-        console.warn(`Skipped ${SOURCES[i].url}:`, result.reason);
+      const rows = data.map(mapRecord);
+
+      let serverRooms = [];
+      if (roomsRes && roomsRes.ok) {
+        const list = await roomsRes.json();
+        if (Array.isArray(list)) serverRooms = list;
       }
-    });
 
-    // Categories that came from the records themselves
-    all.forEach((r) => found.add(r.category));
+      const extras = [
+        ...new Set([...serverRooms, ...rows.map((r) => r.category)]),
+      ]
+        .filter((r) => r && !DEFAULT_ROOMS.includes(r))
+        .sort((a, b) => a.localeCompare(b));
 
-    const ordered = [
-      ...CATEGORY_ORDER.filter((c) => found.has(c)),
-      ...[...found].filter((c) => !CATEGORY_ORDER.includes(c)),
-    ];
-
-    setSpaces(all);
-    setCategories(ordered);
-    setLoading(false);
+      setSpaces(rows);
+      setCategories([...DEFAULT_ROOMS, ...extras]);
+    } catch (err) {
+      console.warn("Could not load spaces:", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   // Initial load + refresh every 5 seconds so changes appear automatically

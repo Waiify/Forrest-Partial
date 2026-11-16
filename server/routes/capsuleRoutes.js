@@ -7,6 +7,10 @@ module.exports = function registerRoutes(app, context, controllers) {
     requirePermission,
     requireStaffOrAdmin,
   } = context;
+  // Rooms (kept above the "/:id" routes)
+  app.get('/api/capsules/rooms', controllers.listRooms);
+  app.post('/api/capsules/rooms', requireLogin, requireStaffOrAdmin, requirePermission('spaces', 'create'), controllers.createRoom);
+
   app.get('/api/capsules', controllers.listCapsules);
   app.post('/api/capsules', requireLogin, requireStaffOrAdmin, requirePermission('spaces', 'create'), controllers.createCapsule);
   app.put('/api/capsules/:id', requireLogin, requireStaffOrAdmin, requirePermission('spaces', 'update'), controllers.updateCapsule);

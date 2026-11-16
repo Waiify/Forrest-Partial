@@ -5,9 +5,10 @@ import { ChevronDown, Plus, X, Archive, RotateCcw } from "lucide-react";
 
 import StaffHeader from "./components/StaffHeader.jsx";
 import StaffSidebar from "./components/StaffSidebar.jsx";
-import { hasCurrentPermission } from "./permissionUtils.js";
 
 const API = "http://localhost:5000/api";
+// The server saves each space in its room's own collection, based on the room name
+const CAPSULES = `${API}/capsules`;
 
 const ROUTES = {
   Dashboard: "/StaffDashboard",
@@ -26,6 +27,7 @@ const PAGE_TITLES = {
   StaffSystemLogs: "System Logs",
 };
 
+// Rooms that always show a card, in this order
 const CATEGORIES = [
   "Study Room",
   "Capsule Pods",
@@ -34,7 +36,6 @@ const CATEGORIES = [
   "Life Room",
   "Board Room",
 ];
-
 
 const STATUS_OPTIONS = [
   "Available",
@@ -61,11 +62,8 @@ const EMPTY_FORM = {
   room: "Capsule Pods",
 };
 
-//ngano man kasi room 1 ito at hindi capsule pods?
-const ROOM_ALIASES = {
-  "Room 1": "Capsule Pods",
-};
-// Converts a database document into the row shape the page uses
+// Converts a database document into the row shape the page uses.
+// The server tags every document with the room (collection) it came from.
 function toRow(c) {
   return {
     id: c.capsuleId,
@@ -74,7 +72,7 @@ function toRow(c) {
     price: `₱${c.pricePerHour} per hour`,
     pricePerHour: c.pricePerHour,
     status: c.status,
-    room: ROOM_ALIASES[c.room] ?? c.room ?? "Capsule Pods",
+    room: c.room,
   };
 }
 
@@ -114,7 +112,7 @@ const inputCls =
   "h-10 w-full rounded-lg border border-[#CFE3D9] bg-white px-3 text-sm text-[#0B3B2A] outline-none placeholder:text-[#8AA699] focus:border-[#2F9E7A] focus:ring-2 focus:ring-[#2F9E7A]/25";
 
 // One gray card for a room, holding all of its tiles
-function RoomCard({ title, items, onEdit, onAdd, canEdit, canAdd }) {
+function RoomCard({ title, items, onEdit, onAdd }) {
   return (
     <div className="min-h-[170px] rounded-[20px] bg-[#b3b3b3] px-4 pb-5 pt-4">
       <div className="mb-3 flex items-start justify-between">
@@ -124,34 +122,31 @@ function RoomCard({ title, items, onEdit, onAdd, canEdit, canAdd }) {
             ({items.length})
           </span>
         </h3>
-        {canAdd && (
-          <button
-            type="button"
-            onClick={() => onAdd(title)}
-            aria-label={`Add to ${title}`}
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-white/30 text-white hover:bg-white/50"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => onAdd(title)}
+          aria-label={`Add to ${title}`}
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-white/30 text-white hover:bg-white/50"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
       </div>
 
       {items.length === 0 ? (
         <div className="py-6 text-center text-[12px] text-white/80">
-          No spaces yet
+          No services yet
         </div>
       ) : (
         <div className="flex flex-wrap justify-center gap-3">
           {items.map((capsule) => {
             const s = STATUS[capsule.status] ?? STATUS["Available"];
-            const Tile = canEdit ? "button" : "div";
             return (
-              <Tile
+              <button
                 key={capsule.id}
-                type={canEdit ? "button" : undefined}
-                onClick={canEdit ? () => onEdit(capsule.id) : undefined}
+                type="button"
+                onClick={() => onEdit(capsule.id)}
                 title={`${capsule.id} · ${capsule.type} · ${capsule.price}`}
-                className={`flex h-[88px] w-[88px] flex-col items-center justify-center rounded-[14px] ${s.tile} ${s.text} shadow-sm ${canEdit ? "transition hover:-translate-y-0.5 hover:shadow-md" : ""}`}
+                className={`flex h-[88px] w-[88px] flex-col items-center justify-center rounded-[14px] ${s.tile} ${s.text} shadow-sm transition hover:-translate-y-0.5 hover:shadow-md`}
               >
                 <span className="text-[19px] font-medium leading-none">
                   {capsule.capsule}
@@ -161,7 +156,7 @@ function RoomCard({ title, items, onEdit, onAdd, canEdit, canAdd }) {
                     ? "Maintenance"
                     : capsule.status}
                 </span>
-              </Tile>
+              </button>
             );
           })}
         </div>
@@ -177,20 +172,20 @@ export default function StaffSpacesandServicesManagement() {
   const [activeTab, setActiveTab] = useState("capsules");
   // "View" on the availability page sends the room name here
   const [roomFilter, setRoomFilter] = useState(
-    CATEGORIES.includes(location.state?.category)
-      ? location.state.category
-      : "All rooms"
+    location.state?.category ? location.state.category : "All services"
   );
   const [statusFilter, setStatusFilter] = useState("All status");
   const [capsules, setCapsules] = useState([]);
+  const [serverRooms, setServerRooms] = useState([]); // every room registered on the server
   const [loading, setLoading] = useState(true);
 
-  // Modal: null (closed), "add", or "edit"
+  // Space modal: null (closed), "add", or "edit"
   const [modalMode, setModalMode] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
-  const canCreate = hasCurrentPermission("spaces", "create");
-  const canEdit = hasCurrentPermission("spaces", "update");
-  const canDelete = hasCurrentPermission("spaces", "delete");
+
+  // New-room modal
+  const [roomModalOpen, setRoomModalOpen] = useState(false);
+  const [newRoomName, setNewRoomName] = useState("");
 
   const active =
     Object.entries(ROUTES).find(
@@ -202,20 +197,32 @@ export default function StaffSpacesandServicesManagement() {
   }
 
   // ---------- Load data from the database ----------
+  // scope=all asks the server for the spaces of every room (each in its own collection)
   async function loadCapsules() {
     try {
       setLoading(true);
       const res = await fetch(
-        `${API}/capsules?archived=${activeTab === "archived"}`
+        `${CAPSULES}?archived=${activeTab === "archived"}&scope=all`
       );
       if (!res.ok) throw new Error("Request failed");
       const data = await res.json();
       setCapsules(data.map(toRow));
     } catch (err) {
       console.error(err);
-      alert("Could not load spaces. Is the server running?");
+      alert("Could not load services. Is the server running?");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadRooms() {
+    try {
+      const res = await fetch(`${CAPSULES}/rooms`);
+      if (!res.ok) throw new Error("Request failed");
+      setServerRooms(await res.json());
+    } catch (err) {
+      // Not fatal: the page still shows the default rooms
+      console.error(err);
     }
   }
 
@@ -224,21 +231,29 @@ export default function StaffSpacesandServicesManagement() {
     loadCapsules();
   }, [activeTab]);
 
+  useEffect(() => {
+    loadRooms();
+  }, []);
+
   // ---------- Cards and filters ----------
-  // The six rooms always show, plus any other room name found in the database
+  // The six default rooms first, then rooms created later (A-Z)
   const roomNames = useMemo(() => {
-    const extras = [
-      ...new Set(
-        capsules.map((c) => c.room).filter((r) => r && !CATEGORIES.includes(r))
-      ),
-    ].sort();
+    const extras = [...new Set([...serverRooms, ...capsules.map((c) => c.room)])]
+      .filter((r) => r && !CATEGORIES.includes(r))
+      .sort((a, b) => a.localeCompare(b));
     return [...CATEGORIES, ...extras];
-  }, [capsules]);
+  }, [serverRooms, capsules]);
+
+  // Ignore a filter that points at a room that doesn't exist
+  const effectiveRoomFilter =
+    roomFilter === "All services" || roomNames.includes(roomFilter)
+      ? roomFilter
+      : "All services";
 
   const visibleRooms =
-    roomFilter === "All rooms"
+    effectiveRoomFilter === "All services"
       ? roomNames
-      : roomNames.filter((r) => r === roomFilter);
+      : roomNames.filter((r) => r === effectiveRoomFilter);
 
   function itemsFor(room) {
     return capsules.filter(
@@ -262,14 +277,15 @@ export default function StaffSpacesandServicesManagement() {
   async function handleArchive(id) {
     const action = activeTab === "archived" ? "restore" : "archive";
     try {
-      const res = await fetch(`${API}/capsules/${id}/${action}`, {
-        method: "PATCH",
-      });
+      const res = await fetch(
+        `${CAPSULES}/${encodeURIComponent(id)}/${action}`,
+        { method: "PATCH" }
+      );
       if (!res.ok) throw new Error("Request failed");
       loadCapsules();
     } catch (err) {
       console.error(err);
-      alert(`Could not ${action} space.`);
+      alert(`Could not ${action} service.`);
     }
   }
 
@@ -278,7 +294,9 @@ export default function StaffSpacesandServicesManagement() {
       ...EMPTY_FORM,
       room:
         room ??
-        (CATEGORIES.includes(roomFilter) ? roomFilter : EMPTY_FORM.room),
+        (roomNames.includes(effectiveRoomFilter)
+          ? effectiveRoomFilter
+          : EMPTY_FORM.room),
     });
     setModalMode("add");
   }
@@ -292,7 +310,7 @@ export default function StaffSpacesandServicesManagement() {
       type: c.type,
       price: String(c.pricePerHour),
       status: c.status,
-      room: c.room || EMPTY_FORM.room,
+      room: c.room,
     });
     setModalMode("edit");
   }
@@ -313,16 +331,19 @@ export default function StaffSpacesandServicesManagement() {
     }
 
     const isEdit = modalMode === "edit";
-    const url = isEdit ? `${API}/capsules/${form.id}` : `${API}/capsules`;
+    const url = isEdit ? `${CAPSULES}/${encodeURIComponent(form.id)}` : CAPSULES;
 
     const body = {
       capsuleName: form.capsule,
-      room: form.room,
       type: form.type,
       pricePerHour: Number(form.price),
       status: form.status,
     };
-    if (!isEdit) body.capsuleId = form.id;
+    // For a new space the room decides which collection it is saved in
+    if (!isEdit) {
+      body.capsuleId = form.id;
+      body.room = form.room;
+    }
 
     try {
       const res = await fetch(url, {
@@ -332,8 +353,8 @@ export default function StaffSpacesandServicesManagement() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        alert(data.message || "Could not save space.");
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || "Could not save service.");
         return;
       }
 
@@ -345,10 +366,35 @@ export default function StaffSpacesandServicesManagement() {
     }
   }
 
-  // Keeps an old room value (like "Room 1") selectable while editing it
-  const roomChoices = CATEGORIES.includes(form.room)
-    ? CATEGORIES
-    : [form.room, ...CATEGORIES];
+  // Creates a new room type (and its own collection) on the server
+  async function handleCreateRoom() {
+    const name = newRoomName.trim().replace(/\s+/g, " ");
+    if (!name) {
+      alert("Please enter a name for the new room.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${CAPSULES}/rooms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.message || "Could not create room.");
+        return;
+      }
+
+      setRoomModalOpen(false);
+      setNewRoomName("");
+      await loadRooms();
+    } catch (err) {
+      console.error(err);
+      alert("Could not reach the server.");
+    }
+  }
 
   return (
     <div className="flex h-screen w-full text-slate-900">
@@ -369,13 +415,13 @@ export default function StaffSpacesandServicesManagement() {
           backgroundRepeat: "no-repeat",
         }}
       >
-  <StaffHeader active={PAGE_TITLES[active]} />
+        <StaffHeader active={PAGE_TITLES[active]} />
         <main className="flex-1 overflow-y-auto p-6">
           <section className="mx-auto w-full overflow-hidden rounded-2xl bg-white shadow-md">
             {/* Tabs */}
             <div className="flex gap-6 border-b border-[#CFE3D9] px-6 pt-4">
               {[
-                ["capsules", "Spaces"],
+                ["capsules", "Services"],
                 ["archived", "Archived"],
               ].map(([key, label]) => (
                 <button
@@ -393,12 +439,12 @@ export default function StaffSpacesandServicesManagement() {
               ))}
             </div>
 
-            {/* Filters + Add button */}
+            {/* Filters + Add buttons */}
             <div className="flex flex-wrap items-center gap-3 px-6 py-5">
               <Select
-                value={roomFilter}
+                value={effectiveRoomFilter}
                 onChange={setRoomFilter}
-                options={["All rooms", ...roomNames]}
+                options={["All services", ...roomNames]}
                 className="w-48"
               />
               <Select
@@ -407,15 +453,22 @@ export default function StaffSpacesandServicesManagement() {
                 options={["All status", ...STATUS_OPTIONS]}
                 className="w-48"
               />
-              {canCreate && (
+              <div className="ml-auto flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRoomModalOpen(true)}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#2F9E7A] px-4 text-sm font-semibold text-[#2F9E7A] transition hover:bg-[#EAF4EE]"
+                >
+                  <Plus className="h-4 w-4" /> New room
+                </button>
                 <button
                   type="button"
                   onClick={() => openAddModal()}
-                  className="ml-auto inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#2F9E7A] px-4 text-sm font-semibold text-white transition hover:bg-[#2a8f6f]"
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#2F9E7A] px-4 text-sm font-semibold text-white transition hover:bg-[#2a8f6f]"
                 >
-                  <Plus className="h-4 w-4" /> Add space
+                  <Plus className="h-4 w-4" /> Add service
                 </button>
-              )}
+              </div>
             </div>
 
             {/* Legend: count of each status */}
@@ -444,8 +497,6 @@ export default function StaffSpacesandServicesManagement() {
                       items={itemsFor(room)}
                       onEdit={handleEdit}
                       onAdd={openAddModal}
-                      canEdit={canEdit}
-                      canAdd={canCreate}
                     />
                   ))}
                 </div>
@@ -454,7 +505,73 @@ export default function StaffSpacesandServicesManagement() {
           </section>
         </main>
 
-        {/* Add / Edit modal */}
+        {/* New room modal */}
+        {roomModalOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[#04281A]/50 p-4 backdrop-blur-[2px]"
+            onMouseDown={(e) =>
+              e.target === e.currentTarget && setRoomModalOpen(false)
+            }
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="w-full max-w-sm rounded-2xl bg-white shadow-2xl"
+            >
+              <div className="flex items-start justify-between border-b border-[#DCEBE3] px-6 py-5">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#0B3B2A]">
+                    New room
+                  </h2>
+                  <p className="text-sm text-[#5F7F70]">
+                    Services in this room are saved in their own collection.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRoomModalOpen(false)}
+                  aria-label="Close"
+                  className="rounded-lg p-1.5 text-[#5F7F70] hover:bg-[#EAF4EE]"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="px-6 py-5">
+                <Field label="Room name">
+                  <input
+                    type="text"
+                    value={newRoomName}
+                    onChange={(e) => setNewRoomName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleCreateRoom()}
+                    placeholder="e.g. Game Room"
+                    className={inputCls}
+                    autoFocus
+                  />
+                </Field>
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-[#DCEBE3] px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => setRoomModalOpen(false)}
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-[#0B3B2A] hover:bg-[#EAF4EE]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateRoom}
+                  className="rounded-lg bg-[#2F9E7A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2a8f6f]"
+                >
+                  Create room
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add / Edit space modal */}
         {modalMode && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-[#04281A]/50 p-4 backdrop-blur-[2px]"
@@ -468,12 +585,12 @@ export default function StaffSpacesandServicesManagement() {
               <div className="flex items-start justify-between border-b border-[#DCEBE3] px-6 py-5">
                 <div>
                   <h2 className="text-lg font-semibold text-[#0B3B2A]">
-                    {modalMode === "edit" ? `Edit ${form.capsule}` : "Add space"}
+                    {modalMode === "edit" ? `Edit ${form.capsule}` : "Add service"}
                   </h2>
                   <p className="text-sm text-[#5F7F70]">
                     {modalMode === "edit"
                       ? "Update the details and status."
-                      : "Enter the details for the new space."}
+                      : "Enter the details for the new service."}
                   </p>
                 </div>
                 <button
@@ -510,23 +627,32 @@ export default function StaffSpacesandServicesManagement() {
                   />
                 </Field>
 
-                {/* Which card the space belongs to */}
+                {/* The room decides which collection the space is saved in */}
                 <div className="col-span-2">
                   <Field label="Room">
                     <select
                       value={form.room}
+                      disabled={modalMode === "edit"}
                       onChange={(e) =>
                         setForm({ ...form, room: e.target.value })
                       }
-                      className={inputCls}
+                      className={`${inputCls} disabled:bg-slate-100 disabled:text-slate-500`}
                     >
-                      {roomChoices.map((r) => (
+                      {(roomNames.includes(form.room)
+                        ? roomNames
+                        : [form.room, ...roomNames]
+                      ).map((r) => (
                         <option key={r} value={r}>
                           {r}
                         </option>
                       ))}
                     </select>
                   </Field>
+                  {modalMode === "edit" && (
+                    <p className="mt-1.5 text-xs text-[#6F8E7F]">
+                      A service can't be moved to another room.
+                    </p>
+                  )}
                 </div>
 
                 <Field label="Type">
@@ -580,7 +706,7 @@ export default function StaffSpacesandServicesManagement() {
               </div>
 
               <div className="flex items-center justify-between border-t border-[#DCEBE3] px-6 py-4">
-                {modalMode === "edit" && canDelete ? (
+                {modalMode === "edit" ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -610,15 +736,13 @@ export default function StaffSpacesandServicesManagement() {
                   >
                     Cancel
                   </button>
-                  {(modalMode === "edit" ? canEdit : canCreate) && (
-                    <button
-                      type="button"
-                      onClick={handleSave}
-                      className="rounded-lg bg-[#2F9E7A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2a8f6f]"
-                    >
-                      {modalMode === "edit" ? "Save Changes" : "Add Space"}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    className="rounded-lg bg-[#2F9E7A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2a8f6f]"
+                  >
+                    {modalMode === "edit" ? "Save Changes" : "Add Service"}
+                  </button>
                 </div>
               </div>
             </div>

@@ -1,3 +1,7 @@
+const dns = require('node:dns'); //ambot para asa ni siya kay di gagana akoang login pag wala ito
+
+dns.setServers(['8.8.8.8', '8.8.4.4']);//same sad ani , di gagana pag wala ni
+
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 require('dotenv').config({ path: __dirname + '/.env' });
 const express = require('express');
@@ -254,7 +258,7 @@ function toManagedUser(user) {
 const Capsule = mongoose.model('Capsule', new mongoose.Schema({
   capsuleId:    { type: String, required: true, unique: true, trim: true },
   capsuleName:  { type: String, required: true, trim: true },
-  room:         { type: String, default: 'Room 1' },
+  room:         { type: String, default: 'Capsule Pods' },
   type:         { type: String, enum: ['Standard', 'Premium'], default: 'Standard' },
   pricePerHour: { type: Number, required: true, min: 0 },
   status: {
@@ -264,6 +268,104 @@ const Capsule = mongoose.model('Capsule', new mongoose.Schema({
   },
   isArchived:   { type: Boolean, default: false },
 }, { timestamps: true }), 'Capsules');
+
+// ROOMS: every room type (Study Room, VIP Room, ...) keeps its spaces in its own collection.
+// Capsule Pods use the original "Capsules" collection above; every other room reuses the same
+// schema (Capsule.schema) with a different collection name.
+const SpaceRoom = mongoose.model('SpaceRoom', new mongoose.Schema({
+  name:           { type: String, required: true, unique: true, trim: true },
+  collectionName: { type: String, required: true, unique: true },
+}, { timestamps: true }), 'SpaceRooms');
+
+const DEFAULT_ROOMS = [
+  { name: 'Study Room',      collectionName: 'Study Room' },
+  { name: 'Capsule Pods',    collectionName: 'Capsules' },
+  { name: 'VIP Room',        collectionName: 'VIP Room' },
+  { name: 'Conference Room', collectionName: 'Conference Room' },
+  { name: 'Life Room',       collectionName: 'Life Room' },
+  { name: 'Board Room',      collectionName: 'Board Room' },
+];
+const DEFAULT_ROOM_NAME = 'Capsule Pods';
+
+// Registers the default rooms the first time they are needed
+let roomsReady = null;
+function ensureRooms() {
+  if (!roomsReady) {
+    roomsReady = (async () => {
+      for (const r of DEFAULT_ROOMS) {
+        await SpaceRoom.updateOne(
+          { name: r.name },
+          { $setOnInsert: { collectionName: r.collectionName } },
+          { upsert: true }
+        );
+      }
+    })().catch((err) => { roomsReady = null; throw err; });
+  }
+  return roomsReady;
+}
+
+async function getRooms() {
+  await ensureRooms();
+  return SpaceRoom.find().sort({ createdAt: 1 }).lean();
+}
+
+// Same fields for every room, a different collection for each
+function spaceModel(collectionName) {
+  if (collectionName === 'Capsules') return Capsule;
+  const key = 'Space_' + collectionName;
+  return mongoose.models[key] || mongoose.model(key, Capsule.schema, collectionName);
+}
+
+// Which room holds this capsuleId? (null if none)
+async function findSpaceRoom(capsuleId) {
+  for (const r of await getRooms()) {
+    if (await spaceModel(r.collectionName).exists({ capsuleId })) return r;
+  }
+  return null;
+}
+
+// Updates the space wherever it lives and returns it tagged with its room
+async function updateSpace(capsuleId, update) {
+  for (const r of await getRooms()) {
+    const doc = await spaceModel(r.collectionName).findOneAndUpdate(
+      { capsuleId },
+      update,
+      { returnDocument: 'after', runValidators: true }
+    );
+    if (doc) return { ...doc.toObject(), room: r.name };
+  }
+  return null;
+}
+
+// Finds a space (in any room) that can still be booked (used by reservations)
+async function findBookableSpace(capsuleId) {
+  for (const r of await getRooms()) {
+    const doc = await spaceModel(r.collectionName)
+      .findOne({
+        capsuleId,
+        isArchived: { $ne: true },
+        status: { $in: ['Available', 'Reserved'] },
+      })
+      .select('capsuleId pricePerHour');
+    if (doc) return doc;
+  }
+  return null;
+}
+
+// Letters, numbers, spaces, - & '  (2-40 characters)
+const cleanRoomName = (raw) => String(raw ?? '').trim().replace(/\s+/g, ' ');
+const validRoomName = (n) =>
+  n.length >= 2 && n.length <= 40 && /^[\p{L}\p{N}][\p{L}\p{N} &'\-]*$/u.test(n);
+
+// One-time cleanup: older capsules were saved with the placeholder room "Room 1".
+// They belong to Capsule Pods, so move them there when the server connects.
+mongoose.connection.once('open', () => {
+  Capsule.updateMany({ room: 'Room 1' }, { $set: { room: DEFAULT_ROOM_NAME } })
+    .then((r) => {
+      if (r.modifiedCount) console.log(`Moved ${r.modifiedCount} capsule(s) from "Room 1" to ${DEFAULT_ROOM_NAME}`);
+    })
+    .catch((err) => console.error('Room 1 cleanup failed:', err));
+});
 
 const Reservation = mongoose.model('Reservation', new mongoose.Schema({
   customerId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -443,13 +545,10 @@ function credentialsPayload() {
 
 // Client API keys are required by the browser SDKs; they are public identifiers, not secrets.
 
+// Archive / restore a space in whichever room holds it
 async function setArchived(req, res, value) {
   try {
-    const capsule = await Capsule.findOneAndUpdate(
-      { capsuleId: req.params.id },
-      { isArchived: value },
-      { returnDocument: 'after' }
-    );
+    const capsule = await updateSpace(req.params.id, { isArchived: value });
     if (!capsule) return res.status(404).json({ message: 'Capsule not found' });
     await audit(req, {
       action: value ? 'capsule.archive' : 'capsule.restore',
@@ -466,6 +565,7 @@ async function setArchived(req, res, value) {
 
 const routeContext = {
   Capsule,
+  DEFAULT_ROOM_NAME,
   JWT_SECRET,
   LEGACY_STAFF_PERMISSIONS,
   Reservation,
@@ -473,10 +573,12 @@ const routeContext = {
   Settings,
   SettingsOtpChallenge,
   SettingsUnlockSession,
+  SpaceRoom,
   User,
   audit,
   bcrypt,
   checkAdminCode,
+  cleanRoomName,
   createLoginToken,
   createReservationQrToken,
   createTransporter,
@@ -484,12 +586,15 @@ const routeContext = {
   crypto,
   developerOtpRecipients,
   fetch,
+  findBookableSpace,
+  findSpaceRoom,
   getAuth,
   getGoogleAuthApiKey,
   getGoogleDriveCredentialValues,
   getGoogleMapsApiKey,
   getMailAuth,
   getRecaptchaSecret,
+  getRooms,
   getSettings,
   hasCustomCaptcha,
   hasCustomEmail,
@@ -515,9 +620,12 @@ const routeContext = {
   sendSettingsOtp,
   setArchived,
   setEnvVar,
+  spaceModel,
   switchGoogleDriveCredentialSource,
   toManagedUser,
   toStaff,
+  updateSpace,
+  validRoomName,
   verifyAdminCode,
 };
 registerRoutes(app, routeContext);
