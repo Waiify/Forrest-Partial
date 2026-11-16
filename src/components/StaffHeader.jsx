@@ -27,6 +27,19 @@ const NO_ITEMS = [];
 
 const MAX_RESULTS = 8;
 
+const STAFF_PAGE_DESCRIPTIONS = {
+  Dashboard: "Monitor today's reservations, availability, and key activity",
+  "Spaces and Services Management": "Add, update, and archive spaces and services",
+  "Spaces and Services Availability": "Review service statuses and current availability",
+  Reservation: "Create, review, approve, and manage customer reservations",
+  "Reservation History": "Review completed, cancelled, and past reservations",
+  "System Logs": "Review staff actions and system activity",
+  "QR Scanner": "Scan confirmed reservation codes to check customers in",
+  Customers: "Review customer accounts and reservation activity",
+  "Capsule Management": "Manage capsule details and availability",
+  "Capsule Availability": "Monitor capsule occupancy and availability",
+};
+
 function readUser() {
   try {
     const raw = sessionStorage.getItem("user");
@@ -106,7 +119,7 @@ function searchItemsByQuery(items, rawQuery) {
 */
 export default function StaffHeader({
   active,
-  subtitle = "Overview of your workspace",
+  subtitle: providedSubtitle,
   query: controlledQuery,
   setQuery: controlledSetQuery,
   onSearch = () => {}, // optional: called with the query when Enter is pressed and no result is highlighted
@@ -301,6 +314,8 @@ export default function StaffHeader({
   }
 
   const displayName = getFullName(user) || "Staff";
+  const subtitle =
+    providedSubtitle || STAFF_PAGE_DESCRIPTIONS[active] || "Overview of your workspace";
 
   if (!user) return null;
 

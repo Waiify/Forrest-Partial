@@ -2,6 +2,19 @@ import { Bell, Search, User, LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { recordLogout } from "../auditLogout.js";
 
+const CUSTOMER_PAGE_DESCRIPTIONS = {
+  Dashboard: "Overview of your reservations, notifications, and recent activity",
+  "Book a Capsule": "Browse available capsules and submit a reservation request",
+  "My Reservation": "View and manage your current reservations",
+  "Capsule Availability": "Check capsule availability before selecting a booking time",
+  History: "Review your completed and past reservations",
+  "Reservation History": "Review your completed and past reservations",
+  Notification: "View updates about your reservations and account",
+  Profile: "Manage your account information and contact details",
+  "Activity Log": "Review recent activity on your account",
+  "Help & Support": "Get assistance with your account and reservations",
+};
+
 export default function Header({
   active,
   query = "",
@@ -149,21 +162,7 @@ export default function Header({
   };
 
   const subtitle =
-    active === "My Reservation"
-      ? "View and manage your current reservation"
-      : active === "Book a Capsule"
-        ? "Find and reserve an available capsule"
-        : active === "Reservation History"
-          ? "View your previous reservations"
-          : active === "History"
-            ? "View your previous reservations"
-            : active === "Profile"
-              ? "Manage your account information"
-              : active === "Help & Support"
-                ? "Get help with your account and reservations"
-                : active === "Notification"
-                  ? "View your notifications"
-                  : "Manage your reservations and workspace visits";
+    CUSTOMER_PAGE_DESCRIPTIONS[active] ?? "Manage your reservations and workspace visits";
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#CFE3D9] bg-[#E8F3ED]/90 px-8 py-4 backdrop-blur">

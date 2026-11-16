@@ -8,7 +8,8 @@ import StaffSidebar from "./components/StaffSidebar.jsx";
 import { readSessionUser } from "./permissionUtils.js";
 
 const STATUS_CONFIG = {
-  active: { label: "Active", dot: "bg-blue-500", text: "text-blue-700" },
+  active: { label: "Active", dot: "bg-green-500", text: "text-green-700" },
+  disabled: { label: "Disabled", dot: "bg-red-500", text: "text-red-700" },
   "checked-out": { label: "Checked out", dot: "bg-slate-400", text: "text-slate-600" },
   upcoming: { label: "Upcoming", dot: "bg-amber-500", text: "text-amber-700" },
 };
@@ -153,7 +154,7 @@ export default function Customers() {
           email: u.email,
           totalStays: 0,        // no reservation data yet — placeholder
           lastVisit: u.createdAt, // placeholder until you have real visit data
-          status: "upcoming",   // placeholder until you track reservation status
+          status: u.status === "disabled" ? "disabled" : "active",
         }));
         setReservations(mapped);
         setError("");

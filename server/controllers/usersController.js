@@ -14,7 +14,7 @@ module.exports = function createUsersController(context) {
     listCustomers: async (req, res) => {
       try {
         const users = await User.find({ role: 'customer' })
-          .select('firstName lastName email username createdAt')
+          .select('firstName lastName email username status createdAt')
           .sort({ createdAt: -1 });
     
         res.json(users);

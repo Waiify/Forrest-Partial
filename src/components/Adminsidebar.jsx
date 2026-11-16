@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   LayoutGrid,
   ClipboardList,
-  BedSingle,
+  Briefcase,
   Users,
   UserCog,
   BarChart3,
@@ -24,7 +24,7 @@ const NAV_ITEMS = [
     group: "Operations",
     items: [
       { id: "Reservation", label: "Reservation", icon: ClipboardList },
-      { id: "Capsule", label: "Capsule", icon: BedSingle },
+      { id: "Capsule", label: "Services", icon: Briefcase },
       { id: "Customers", label: "Customers", icon: Users },
     ],
   },
@@ -91,6 +91,13 @@ function getRoleLabel(user) {
   return ROLE_LABELS[role] || role.charAt(0).toUpperCase() + role.slice(1);
 }
 
+// Shared styling so every row looks and behaves the same.
+const ACCENT = "#7BE0B0";
+const rowBase =
+  "group relative flex w-full items-center gap-3 rounded-lg text-sm font-medium outline-none transition-colors duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-[#7BE0B0]/70";
+const rowActive = "bg-white/[0.12] text-white";
+const rowIdle = "text-white/75 hover:bg-white/[0.06] hover:text-white";
+
 export default function Sidebar({ active, onNavigate }) {
   const navigate = useNavigate();
   const [user, setUser] = useState(readUser);
@@ -137,6 +144,7 @@ export default function Sidebar({ active, onNavigate }) {
       const childActive = children.some((child) => child.id === active);
       const isOpen = openMenus[id] ?? childActive;
       const menuId = `submenu-${id}`;
+      const highlightParent = childActive && !isOpen;
 
       return (
         <div key={id}>
@@ -145,42 +153,64 @@ export default function Sidebar({ active, onNavigate }) {
             onClick={() => setOpenMenus((menus) => ({ ...menus, [id]: !isOpen }))}
             aria-expanded={isOpen}
             aria-controls={menuId}
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-              childActive && !isOpen ? "bg-[#0A5A35] text-white" : "text-white/85 hover:bg-white/10"
-            }`}
+            className={`${rowBase} px-3 py-2.5 ${highlightParent ? rowActive : rowIdle}`}
           >
-            <Icon className="h-[18px] w-[18px]" />
+            {highlightParent && (
+              <span
+                aria-hidden="true"
+                className="absolute -left-3 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full"
+                style={{ backgroundColor: ACCENT }}
+              />
+            )}
+            <Icon
+              className={`h-[18px] w-[18px] shrink-0 transition-colors ${
+                childActive ? "text-[#7BE0B0]" : "text-white/60 group-hover:text-white"
+              }`}
+              aria-hidden="true"
+            />
             <span className="flex-1 text-left">{label}</span>
             <ChevronDown
-              className={`h-4 w-4 text-white/60 transition-transform duration-200 ${
+              className={`h-4 w-4 text-white/50 transition-transform duration-200 motion-reduce:transition-none ${
                 isOpen ? "rotate-180" : ""
               }`}
               aria-hidden="true"
             />
           </button>
 
-          {isOpen && (
-            <div id={menuId} className="ml-[21px] mt-1 space-y-1 border-l border-white/15 pl-3">
-              {children.map((child) => {
-                const ChildIcon = child.icon;
-                const isActive = active === child.id;
-                return (
-                  <button
-                    key={child.id}
-                    type="button"
-                    onClick={() => handleClick(child.id)}
-                    aria-current={isActive ? "page" : undefined}
-                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                      isActive ? "bg-[#0A5A35] text-white" : "text-white/80 hover:bg-white/10"
-                    }`}
-                  >
-                    <ChildIcon className="h-4 w-4" />
-                    {child.label}
-                  </button>
-                );
-              })}
+          {/* Grid-rows trick: animates height from 0 to auto without measuring */}
+          <div
+            id={menuId}
+            className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
+              isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            }`}
+          >
+            <div className="overflow-hidden">
+              <div className="ml-[21px] mt-1 space-y-0.5 border-l border-white/15 pl-3">
+                {children.map((child) => {
+                  const ChildIcon = child.icon;
+                  const isActive = active === child.id;
+                  return (
+                    <button
+                      key={child.id}
+                      type="button"
+                      tabIndex={isOpen ? 0 : -1}
+                      onClick={() => handleClick(child.id)}
+                      aria-current={isActive ? "page" : undefined}
+                      className={`${rowBase} px-3 py-2 ${isActive ? rowActive : rowIdle}`}
+                    >
+                      <ChildIcon
+                        className={`h-4 w-4 shrink-0 ${
+                          isActive ? "text-[#7BE0B0]" : "text-white/60 group-hover:text-white"
+                        }`}
+                        aria-hidden="true"
+                      />
+                      {child.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          )}
+          </div>
         </div>
       );
     }
@@ -193,51 +223,69 @@ export default function Sidebar({ active, onNavigate }) {
         type="button"
         onClick={() => handleClick(id)}
         aria-current={isActive ? "page" : undefined}
-        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-          isActive ? "bg-[#0A5A35] text-white" : "text-white/85 hover:bg-white/10"
-        }`}
+        className={`${rowBase} px-3 py-2.5 ${isActive ? rowActive : rowIdle}`}
       >
-        <Icon className="h-[18px] w-[18px]" />
+        {isActive && (
+          <span
+            aria-hidden="true"
+            className="absolute -left-3 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full"
+            style={{ backgroundColor: ACCENT }}
+          />
+        )}
+        <Icon
+          className={`h-[18px] w-[18px] shrink-0 transition-colors ${
+            isActive ? "text-[#7BE0B0]" : "text-white/60 group-hover:text-white"
+          }`}
+          aria-hidden="true"
+        />
         {label}
       </button>
     );
   }
 
   return (
-    <aside className="hidden w-[250px] shrink-0 flex-col bg-[#033D22] text-white md:flex">
-      <div className="flex items-center gap-3 px-5 py-5">
+    <aside className="hidden w-[260px] shrink-0 flex-col bg-[#033D22] text-white md:sticky md:top-0 md:flex md:h-screen">
+      {/* Brand */}
+      <div className="mx-4 flex items-center gap-3 border-b border-white/10 px-1 pb-5 pt-6">
         <img
           src={logo}
-          alt="Logo"
-          className="h-10 w-10 rounded-full border border-white/30 object-cover"
+          alt="Forrest Co-Working Space logo"
+          className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-white/25 ring-offset-2 ring-offset-[#033D22]"
         />
-        <div className="leading-tight">
-          <p className="text-sm font-semibold">Forrest co-working space</p>
-          <p className="text-[10px] text-white/60">{user?.role === "staff" ? "Staff panel" : "Admin panel"}</p>
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-sm font-semibold tracking-tight">Forrest</p>
+          <p className="truncate text-xs text-white/70">Co-Working Space</p>
+          <p className="mt-1 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white/80">
+            {user?.role === "staff" ? "Staff panel" : "Admin panel"}
+          </p>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-5 px-3 pt-3">
+      {/* Navigation (scrolls on short screens, brand and account stay put) */}
+      <nav
+        aria-label="Main navigation"
+        className="flex-1 space-y-6 overflow-y-auto px-6 pb-4 pt-5 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.2)_transparent]"
+      >
         {visibleNavItems.map(({ group, items }) => (
           <div key={group}>
-            <p className="px-3 pb-1.5 text-xs font-medium text-white/55">{group}</p>
+            <p className="px-3 pb-2 text-xs font-medium text-white/50">{group}</p>
             <div className="space-y-0.5">{items.map(renderItem)}</div>
           </div>
         ))}
       </nav>
 
       {/* Logged-in account info */}
-      <div className="m-4 flex items-center gap-3 border-t border-white/20 pt-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2F9E7A] text-xs font-bold">
+      <div className="m-4 flex items-center gap-3 rounded-xl bg-black/20 p-3 ring-1 ring-white/10">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2F9E7A] text-sm font-bold">
           {getInitials(user)}
         </div>
         <div className="min-w-0 leading-tight">
           <p className="truncate text-sm font-semibold" title={displayName}>
             {displayName}
           </p>
-          {roleLabel && <p className="text-xs text-white/60">{roleLabel}</p>}
+          {roleLabel && <p className="mt-0.5 text-xs text-white/70">{roleLabel}</p>}
           {user?.email && (
-            <p className="truncate text-[11px] text-white/50" title={user.email}>
+            <p className="mt-0.5 truncate text-[11px] text-white/50" title={user.email}>
               {user.email}
             </p>
           )}

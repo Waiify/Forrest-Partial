@@ -42,6 +42,12 @@ const NAV_SECTIONS = [
   },
 ];
 
+const ACCENT = "#7BE0B0";
+const rowBase =
+  "group relative flex w-full items-center gap-3 rounded-lg text-sm font-medium outline-none transition-colors duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-[#7BE0B0]/70";
+const rowActive = "bg-white/[0.12] text-white";
+const rowIdle = "text-white/75 hover:bg-white/[0.06] hover:text-white";
+
 function readUser() {
   try {
     const raw = sessionStorage.getItem("user");
@@ -89,29 +95,31 @@ export default function StaffSidebar({ active, onNavigate }) {
   const role = user?.role || "Staff";
 
   return (
-    <aside className="flex w-[250px] shrink-0 flex-col bg-[#033D22] text-white">
-      <div className="flex items-center gap-3 px-5 py-5">
+    <aside className="hidden w-[260px] shrink-0 flex-col bg-[#033D22] text-white md:sticky md:top-0 md:flex md:h-screen">
+      <div className="mx-4 flex items-center gap-3 border-b border-white/10 px-1 pb-5 pt-6">
         <img
           src={logo}
-          alt="Logo"
-          className="h-10 w-10 rounded-full border border-white/30 object-cover"
+          alt="Forrest Co-Working Space logo"
+          className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-white/25 ring-offset-2 ring-offset-[#033D22]"
         />
-        <div className="leading-tight">
-          <div className="text-sm font-semibold text-white">
-            Forrest co-working space
-          </div>
-          <div className="text-[10px] text-white/60">
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-sm font-semibold tracking-tight">Forrest</p>
+          <p className="truncate text-xs text-white/70">Co-Working Space</p>
+          <p className="mt-1 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white/80">
             Staff panel
-          </div>
+          </p>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-5 px-3 pt-3">
+      <nav
+        aria-label="Main navigation"
+        className="flex-1 space-y-6 overflow-y-auto px-6 pb-4 pt-5 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.2)_transparent]"
+      >
         {NAV_SECTIONS.map(({ title, items }) => (
           <div key={title}>
-            <div className="px-3 pb-1.5 text-xs font-medium leading-snug text-white/55">
+            <p className="px-3 pb-2 text-xs font-medium text-white/50">
               {title}
-            </div>
+            </p>
 
             {items.map(({ id, label, icon: Icon }) => {
               const isActive = active === id;
@@ -122,12 +130,22 @@ export default function StaffSidebar({ active, onNavigate }) {
                   type="button"
                   onClick={() => onNavigate(id)}
                   aria-current={isActive ? "page" : undefined}
-                  className={`flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${
-                    isActive ? "bg-[#0A5A35] text-white" : "text-white/85 hover:bg-white/10"
-                  }`}
+                  className={`${rowBase} px-3 py-2.5 ${isActive ? rowActive : rowIdle}`}
                 >
-                  <Icon size={18} strokeWidth={2} className="mt-0.5 shrink-0" />
-                  <span>{label}</span>
+                  {isActive && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -left-3 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full"
+                      style={{ backgroundColor: ACCENT }}
+                    />
+                  )}
+                  <Icon
+                    className={`h-[18px] w-[18px] shrink-0 transition-colors ${
+                      isActive ? "text-[#7BE0B0]" : "text-white/60 group-hover:text-white"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  {label}
                 </button>
               );
             })}
@@ -135,7 +153,7 @@ export default function StaffSidebar({ active, onNavigate }) {
         ))}
       </nav>
 
-      <div className="m-4 flex items-center gap-3 border-t border-white/20 pt-4">
+      <div className="m-4 flex items-center gap-3 rounded-xl bg-black/20 p-3 ring-1 ring-white/10">
         {user?.avatarUrl || user?.photoURL ? (
           <img
             src={user.avatarUrl || user.photoURL}
@@ -149,10 +167,17 @@ export default function StaffSidebar({ active, onNavigate }) {
         )}
 
         <div className="min-w-0 leading-tight">
-          <div className="truncate text-sm font-semibold">{displayName}</div>
-          <div className="truncate text-xs capitalize text-white/60">
+          <p className="truncate text-sm font-semibold" title={displayName}>
+            {displayName}
+          </p>
+          <p className="mt-0.5 text-xs text-white/70">
             {role}
-          </div>
+          </p>
+          {user?.email && (
+            <p className="mt-0.5 truncate text-[11px] text-white/50" title={user.email}>
+              {user.email}
+            </p>
+          )}
         </div>
       </div>
     </aside>
