@@ -1,8 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { History, RefreshCw } from "lucide-react";
-
-import pageBackground from "./assets/page_background.jpeg";
+import { History, RefreshCw, Search } from "lucide-react";
 
 import StaffHeader from "./components/StaffHeader.jsx";
 import StaffSidebar from "./components/StaffSidebar.jsx";
@@ -76,7 +74,7 @@ async function request(path, { method = "GET", body, signal } = {}) {
     });
   } catch (err) {
     if (err.name === "AbortError") throw err;
-    throw new Error("Cannot reach the server. Is it running?");
+    throw new Error("Cannot reach the server. Is it running?", { cause: err });
   }
 
   const data = await response.json().catch(() => null);
@@ -151,11 +149,11 @@ function isHistory(reservation, now) {
 
 function StatCard({ label, value, detail, tint }) {
   return (
-    <div className="rounded-2xl bg-white px-4 py-4 text-center shadow-md">
-      <div className="text-xs font-semibold text-slate-800">{label}</div>
-      <div className="mt-2 text-3xl font-bold text-[#0b4d2c]">{value}</div>
+    <div className="flex flex-col items-center rounded-2xl border border-[#DCEBE3] bg-white p-5 text-center shadow-sm">
+      <div className="text-sm font-medium text-[#6F8E7F]">{label}</div>
+      <div className="mt-2 text-3xl font-bold text-[#0B3B2A]">{value}</div>
       <div
-        className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${tint}`}
+        className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${tint}`}
       >
         {detail}
       </div>
@@ -169,6 +167,7 @@ export default function StaffReservationHistory() {
   const location = useLocation();
 
   const [reservations, setReservations] = useState([]);
+  const [currentTime, setCurrentTime] = useState(0);
   // Services gikan sa tanang rooms (Study Room, Capsule Pods, VIP Room, ...)
   const [services, setServices] = useState([]);
 
@@ -180,6 +179,7 @@ export default function StaffReservationHistory() {
   const [serviceFilter, setServiceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   const requestSeq = useRef(0);
   const mounted = useRef(true);
@@ -200,6 +200,7 @@ export default function StaffReservationHistory() {
       const data = await request("/reservations");
       if (!mounted.current || seq !== requestSeq.current) return;
       setReservations(asArray(data));
+      setCurrentTime(Date.now());
       setError("");
     } catch (err) {
       if (!mounted.current || seq !== requestSeq.current) return;
@@ -228,8 +229,10 @@ export default function StaffReservationHistory() {
 
   useEffect(() => {
     mounted.current = true;
-    loadReservations({ showSpinner: true });
-    loadOptions();
+    const initialLoad = window.setTimeout(() => {
+      loadReservations();
+      loadOptions();
+    }, 0);
 
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") loadReservations();
@@ -242,6 +245,7 @@ export default function StaffReservationHistory() {
 
     return () => {
       mounted.current = false;
+      clearTimeout(initialLoad);
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
@@ -254,10 +258,10 @@ export default function StaffReservationHistory() {
   );
 
   // Ang history ra: completed / declined / cancelled / rejected / past
-  const history = useMemo(() => {
-    const now = Date.now();
-    return reservations.filter((r) => isHistory(r, now));
-  }, [reservations]);
+  const history = useMemo(
+    () => reservations.filter((r) => isHistory(r, currentTime)),
+    [reservations, currentTime]
+  );
 
   // capsuleId -> room type (Study Room, Capsule Pods, ...)
   const serviceRooms = useMemo(
@@ -274,9 +278,14 @@ export default function StaffReservationHistory() {
   }, [services, history, serviceRooms]);
 
   const filteredHistory = useMemo(() => {
-    const now = Date.now();
+    const query = search.trim().toLowerCase();
     return history
       .filter((r) => {
+        if (
+          query &&
+          !`${r.guestName || ""} ${r.guestEmail || ""}`.toLowerCase().includes(query)
+        )
+          return false;
         if (dateFilter && toLocalDateValue(r.startAt) !== dateFilter)
           return false;
         if (
@@ -285,7 +294,7 @@ export default function StaffReservationHistory() {
         )
           return false;
         if (statusFilter === "Past reservation") {
-          if (!isPastOpen(r, now)) return false;
+          if (!isPastOpen(r, currentTime)) return false;
         } else if (statusFilter !== "all" && r.status !== statusFilter) {
           return false;
         }
@@ -303,10 +312,9 @@ export default function StaffReservationHistory() {
         if (dayA !== dayB) return dayA < dayB ? 1 : -1;
         return new Date(a.startAt) - new Date(b.startAt);
       });
-  }, [history, dateFilter, serviceFilter, serviceRooms, statusFilter, paymentFilter]);
+  }, [history, currentTime, search, dateFilter, serviceFilter, serviceRooms, statusFilter, paymentFilter]);
 
   const stats = useMemo(() => {
-    const now = Date.now();
     const completed = history.filter((r) => r.status === "Completed");
     const cancelled = history.filter((r) => CANCELLED_LIKE.has(r.status));
     const paid = history.filter(
@@ -316,19 +324,21 @@ export default function StaffReservationHistory() {
       total: history.length,
       completed: completed.length,
       cancelled: cancelled.length,
-      past: history.filter((r) => isPastOpen(r, now)).length,
+      past: history.filter((r) => isPastOpen(r, currentTime)).length,
       paidCount: paid.length,
       collected: paid.reduce((sum, r) => sum + (Number(r.totalPrice) || 0), 0),
     };
-  }, [history]);
+  }, [history, currentTime]);
 
   const hasFilters =
+    search ||
     dateFilter ||
     serviceFilter !== "all" ||
     statusFilter !== "all" ||
     paymentFilter !== "all";
 
   function clearFilters() {
+    setSearch("");
     setDateFilter("");
     setServiceFilter("all");
     setStatusFilter("all");
@@ -336,32 +346,18 @@ export default function StaffReservationHistory() {
   }
 
   const bannerMessage = error || optionsError;
-  const now = Date.now();
+  const now = currentTime;
 
   return (
-    <div className="flex h-screen w-full text-slate-900">
+    <div className="flex h-screen w-full bg-[#F4F8F5] text-[#0B3B2A]">
       <StaffSidebar active={active} onNavigate={handleNavigate} />
 
-      <div
-        className="flex min-w-0 flex-1 flex-col overflow-hidden"
-        style={{
-          backgroundImage: `
-            linear-gradient(
-              rgba(190, 210, 207, 0.68),
-              rgba(190, 210, 207, 0.68)
-            ),
-            url(${pageBackground})
-          `,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-        }}
-      >
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <StaffHeader active={PAGE_TITLES[active]} />
 
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="mx-auto w-full space-y-6">
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto max-w-7xl space-y-6">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard
                 label="All history"
                 value={stats.total}
@@ -388,13 +384,13 @@ export default function StaffReservationHistory() {
               />
             </div>
 
-            <section className="overflow-hidden rounded-2xl bg-white shadow-md">
+            <section className="overflow-hidden rounded-2xl border border-[#DCEBE3] bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#DCEBE3] px-5 py-4 sm:px-6">
                 <div>
-                  <h2 className="text-base font-bold text-[#0b4d2c]">
+                  <h2 className="font-semibold text-[#0B3B2A]">
                     Reservation history
                   </h2>
-                  <p className="mt-0.5 text-xs text-slate-400">
+                  <p className="mt-0.5 text-xs text-[#6F8E7F]">
                     {filteredHistory.length}{" "}
                     {filteredHistory.length === 1
                       ? "reservation"
@@ -418,6 +414,21 @@ export default function StaffReservationHistory() {
               </div>
 
               <div className="flex flex-wrap items-end gap-3 border-b border-[#DCEBE3] bg-[#FAFCFA] px-5 py-4 sm:px-6">
+                <label className="block min-w-48 flex-1 sm:max-w-64">
+                  <span className="mb-1.5 block text-xs font-semibold text-[#5F7F70]">
+                    Search customer
+                  </span>
+                  <span className="relative block">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9BB6A8]" />
+                    <input
+                      className={`${inputClass} pl-9`}
+                      type="search"
+                      placeholder="Name or email"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </span>
+                </label>
                 <label className="block min-w-36 flex-1 sm:max-w-48">
                   <span className="mb-1.5 block text-xs font-semibold text-[#5F7F70]">
                     Date
@@ -509,7 +520,7 @@ export default function StaffReservationHistory() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[900px] border-collapse text-left">
                   <thead>
-                    <tr className="bg-[#34a37c] text-[10px] font-semibold uppercase tracking-wide text-white">
+                    <tr className="bg-[#F7FAF8]">
                       {[
                         "Customer",
                         "Service",
@@ -521,7 +532,7 @@ export default function StaffReservationHistory() {
                       ].map((heading) => (
                         <th
                           key={heading}
-                          className="whitespace-nowrap px-4 py-3"
+                          className="whitespace-nowrap border-b border-[#E6EFE9] px-4 py-3 text-xs font-semibold text-[#6F8E7F]"
                         >
                           {heading}
                         </th>
@@ -533,7 +544,7 @@ export default function StaffReservationHistory() {
                       <tr>
                         <td
                           colSpan={7}
-                          className="px-5 py-14 text-center text-sm text-slate-400"
+                          className="px-5 py-14 text-center text-sm text-[#6F8E7F]"
                         >
                           Loading reservation history...
                         </td>
@@ -542,7 +553,7 @@ export default function StaffReservationHistory() {
                       <tr>
                         <td
                           colSpan={7}
-                          className="px-5 py-14 text-center text-sm text-slate-400"
+                          className="px-5 py-14 text-center text-sm text-[#6F8E7F]"
                         >
                           Reservation history could not be loaded.
                         </td>
@@ -554,7 +565,7 @@ export default function StaffReservationHistory() {
                           <p className="mt-3 font-semibold text-[#0B3B2A]">
                             No history found
                           </p>
-                          <p className="mt-1 text-sm text-slate-400">
+                          <p className="mt-1 text-sm text-[#6F8E7F]">
                             {history.length === 0
                               ? "Completed, cancelled, and past reservations will show up here."
                               : "Try changing or clearing the selected filters."}
@@ -575,42 +586,42 @@ export default function StaffReservationHistory() {
                         return (
                           <Fragment key={reservation._id}>
                             {showDay && (
-                              <tr className="bg-[#EAF4EE]">
+                              <tr className="bg-[#F7FAF8]">
                                 <td
                                   colSpan={7}
-                                  className="px-4 py-2 text-xs font-semibold text-[#0B4A2E]"
+                                  className="border-b border-[#E6EFE9] px-4 py-2 text-xs font-semibold text-[#6F8E7F]"
                                 >
                                   {formatDayLabel(reservation.startAt)}
                                 </td>
                               </tr>
                             )}
-                            <tr className="border-b border-slate-100 last:border-0 hover:bg-[#FAFCFA]">
+                            <tr className="border-b border-[#EEF3F0] last:border-0 hover:bg-[#FAFCFA]">
                               <td className="px-4 py-4">
-                                <p className="whitespace-nowrap text-sm font-semibold text-slate-800">
+                                <p className="whitespace-nowrap text-sm font-semibold text-[#0B3B2A]">
                                   {reservation.guestName || "—"}
                                 </p>
-                                <p className="mt-0.5 whitespace-nowrap text-xs text-slate-400">
+                                <p className="mt-0.5 whitespace-nowrap text-xs text-[#6F8E7F]">
                                   {reservation.guestEmail}
                                 </p>
                               </td>
-                              <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-slate-700">
+                              <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-[#315D49]">
                                 {serviceNames.get(reservation.capsuleId) ||
                                   reservation.capsuleName ||
                                   reservation.capsuleId}
                               </td>
                               <td className="whitespace-nowrap px-4 py-4">
-                                <p className="text-sm font-medium text-slate-700">
+                                <p className="text-sm font-medium text-[#315D49]">
                                   {formatDate(reservation.startAt)}
                                 </p>
-                                <p className="mt-0.5 text-xs text-slate-400">
+                                <p className="mt-0.5 text-xs text-[#6F8E7F]">
                                   {formatTime(reservation.startAt)} –{" "}
                                   {formatTime(reservation.endAt)}
                                 </p>
                               </td>
-                              <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-600">
+                              <td className="whitespace-nowrap px-4 py-4 text-sm text-[#315D49]">
                                 {duration} {duration === 1 ? "hr" : "hrs"}
                               </td>
-                              <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-slate-700">
+                              <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-[#315D49]">
                                 {formatCurrency(reservation.totalPrice)}
                               </td>
                               <td className="px-4 py-4">
@@ -623,7 +634,7 @@ export default function StaffReservationHistory() {
                                   {reservation.status}
                                 </span>
                                 {pastOpen && (
-                                  <p className="mt-1 text-[11px] text-slate-400">
+                                  <p className="mt-1 text-[11px] text-[#6F8E7F]">
                                     Past reservation
                                   </p>
                                 )}

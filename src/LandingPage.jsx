@@ -90,7 +90,7 @@ function Navbar() {
         </ul>
         <button
           className="rounded-lg p-2 md:hidden"
-          aria-label="Toggle menu"
+          aria-label="Toggle menu"  
           aria-expanded={open}
           onClick={() => setOpen(!open)}
         >
