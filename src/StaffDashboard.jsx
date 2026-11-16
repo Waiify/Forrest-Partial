@@ -15,6 +15,7 @@ const ROUTES = {
   StaffSpacesandServicesAvailability: "/StaffSpacesandServicesAvailability",
   StaffReservation: "/StaffReservation",
   StaffReservationHistory: "/StaffReservationHistory",
+  StaffQRScanner: "/StaffQRScanner",
   StaffSystemLogs: "/StaffSystemLogs",
 };
 
@@ -24,6 +25,7 @@ const PAGE_TITLES = {
   StaffSpacesandServicesAvailability: "Spaces and Services Availability",
   StaffReservation: "Reservation",
   StaffReservationHistory: "Reservation History",
+  StaffQRScanner: "QR Scanner",
   StaffSystemLogs: "System Logs",
 };
 

@@ -404,7 +404,7 @@ export default function AdminCapsule() {
       navigate("/admincapsule");
       return;
     }
-    if (section === "Staff Management" || section === "Management") {
+    if (section === "User Management" || section === "Staff Management" || section === "Management") {
       navigate("/management");
       return;
     }

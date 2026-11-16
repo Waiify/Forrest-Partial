@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   LayoutGrid,
   ClipboardList,
@@ -7,9 +8,16 @@ import {
   UserCog,
   BarChart3,
   Settings,
+  ShieldCheck,
+  ChevronDown,
+  Plug,
 } from "lucide-react";
 import logo from "../assets/logo.jpg";
+import { userHasPermission } from "../permissionUtils.js";
 
+// An item with `children` becomes a dropdown. Its children are normal nav items.
+// The "Integration" child uses id "Settings" so AdminSettings (active="Settings")
+// highlights it and your existing handleNavigate("Settings") -> "/settings" keeps working.
 const NAV_ITEMS = [
   { group: "Overview", items: [{ id: "Dashboard", label: "Dashboard", icon: LayoutGrid }] },
   {
@@ -23,10 +31,15 @@ const NAV_ITEMS = [
   {
     group: "Management",
     items: [
-      { id: "Staff Management", label: "Staff Management", icon: UserCog },
+      { id: "User Management", label: "User Management", icon: UserCog },
       { id: "Reports", label: "Reports", icon: BarChart3 },
-      { id: "Settings", label: "Settings", icon: Settings },
-      
+      { id: "Audit Logs", label: "Audit Logs", icon: ShieldCheck },
+      {
+        id: "SettingsMenu",
+        label: "Settings",
+        icon: Settings,
+        children: [{ id: "Settings", label: "Integration", icon: Plug }],
+      },
     ],
   },
 ];
@@ -79,7 +92,12 @@ function getRoleLabel(user) {
 }
 
 export default function Sidebar({ active, onNavigate }) {
+  const navigate = useNavigate();
   const [user, setUser] = useState(readUser);
+
+  // Dropdown open/closed state. If the admin never clicked a dropdown,
+  // it is open automatically while one of its pages is active.
+  const [openMenus, setOpenMenus] = useState({});
 
   // I-refresh ang user kung mobalik ang focus sa window
   useEffect(() => {
@@ -90,6 +108,100 @@ export default function Sidebar({ active, onNavigate }) {
 
   const displayName = getFullName(user) || "Account";
   const roleLabel = getRoleLabel(user);
+  const sectionPermission = {
+    Customers: ["customers", "view"],
+    Reports: ["reports", "view"],
+    "Audit Logs": ["auditLogs", "view"],
+  };
+  const visibleNavItems = NAV_ITEMS.map((group) => ({
+    ...group,
+    items: group.items.filter(({ id }) => {
+      if (user?.role !== "staff") return true;
+      const required = sectionPermission[id];
+      return required
+        ? userHasPermission(user, required[0], required[1])
+        : false;
+    }),
+  })).filter((group) => group.items.length > 0);
+
+  // The sidebar opens the Audit Logs page itself, so the other admin pages
+  // don't need any change to their own handleNavigate.
+  function handleClick(id) {
+    if (id === "Audit Logs") return navigate("/audit-logs");
+    onNavigate(id);
+  }
+
+  function renderItem({ id, label, icon: Icon, children }) {
+    // ---- Dropdown item (e.g. Settings) ----
+    if (children?.length) {
+      const childActive = children.some((child) => child.id === active);
+      const isOpen = openMenus[id] ?? childActive;
+      const menuId = `submenu-${id}`;
+
+      return (
+        <div key={id}>
+          <button
+            type="button"
+            onClick={() => setOpenMenus((menus) => ({ ...menus, [id]: !isOpen }))}
+            aria-expanded={isOpen}
+            aria-controls={menuId}
+            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+              childActive && !isOpen ? "bg-[#0A5A35] text-white" : "text-white/85 hover:bg-white/10"
+            }`}
+          >
+            <Icon className="h-[18px] w-[18px]" />
+            <span className="flex-1 text-left">{label}</span>
+            <ChevronDown
+              className={`h-4 w-4 text-white/60 transition-transform duration-200 ${
+                isOpen ? "rotate-180" : ""
+              }`}
+              aria-hidden="true"
+            />
+          </button>
+
+          {isOpen && (
+            <div id={menuId} className="ml-[21px] mt-1 space-y-1 border-l border-white/15 pl-3">
+              {children.map((child) => {
+                const ChildIcon = child.icon;
+                const isActive = active === child.id;
+                return (
+                  <button
+                    key={child.id}
+                    type="button"
+                    onClick={() => handleClick(child.id)}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      isActive ? "bg-[#0A5A35] text-white" : "text-white/80 hover:bg-white/10"
+                    }`}
+                  >
+                    <ChildIcon className="h-4 w-4" />
+                    {child.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ---- Regular item ----
+    const isActive = active === id;
+    return (
+      <button
+        key={id}
+        type="button"
+        onClick={() => handleClick(id)}
+        aria-current={isActive ? "page" : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+          isActive ? "bg-[#0A5A35] text-white" : "text-white/85 hover:bg-white/10"
+        }`}
+      >
+        <Icon className="h-[18px] w-[18px]" />
+        {label}
+      </button>
+    );
+  }
 
   return (
     <aside className="hidden w-[250px] shrink-0 flex-col bg-[#033D22] text-white md:flex">
@@ -101,31 +213,15 @@ export default function Sidebar({ active, onNavigate }) {
         />
         <div className="leading-tight">
           <p className="text-sm font-semibold">Forrest co-working space</p>
-          <p className="text-[10px] text-white/60">Admin panel</p>
+          <p className="text-[10px] text-white/60">{user?.role === "staff" ? "Staff panel" : "Admin panel"}</p>
         </div>
       </div>
 
       <nav className="flex-1 space-y-5 px-3 pt-3">
-        {NAV_ITEMS.map(({ group, items }) => (
+        {visibleNavItems.map(({ group, items }) => (
           <div key={group}>
             <p className="px-3 pb-1.5 text-xs font-medium text-white/55">{group}</p>
-            {items.map(({ id, label, icon: Icon }) => {
-              const isActive = active === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => onNavigate(id)}
-                  aria-current={isActive ? "page" : undefined}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                    isActive ? "bg-[#0A5A35] text-white" : "text-white/85 hover:bg-white/10"
-                  }`}
-                >
-                  <Icon className="h-[18px] w-[18px]" />
-                  {label}
-                </button>
-              );
-            })}
+            <div className="space-y-0.5">{items.map(renderItem)}</div>
           </div>
         ))}
       </nav>

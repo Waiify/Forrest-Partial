@@ -1,9 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  Plus,
-  CalendarDays,
-  BedSingle,
-} from "lucide-react";
+import { Plus, CalendarDays, BedSingle } from "lucide-react";
 
 import Header from "./components/CustomerHeader.jsx";
 import Sidebar from "./components/CustomerSidebar.jsx";
@@ -22,236 +18,132 @@ import Notification from "./components/customer/notification.jsx";
 import BookCapsule from "./components/customer/bookCapsule.jsx";
 import CapsuleAvailability from "./components/customer/capsuleAvailability.jsx";
 
-import {
-  CAPSULES,
-  RESERVATIONS,
-  getUser,
-} from "./dashboardData.js";
+import ActivityLog from "./ActivityLog.jsx";
 
+import { CAPSULES, RESERVATIONS, getUser } from "./dashboardData.js";
+
+function dateInputValue(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function timeInputValue(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 export default function CustomerDashboard() {
-
   /* =====================================================
       BASIC STATES
   ====================================================== */
 
-  const [active, setActive] =
-    useState("Dashboard");
-
-  const [query, setQuery] =
-    useState("");
-
-  const [selectedReservation, setSelectedReservation] =
-    useState(null);
-
-  const [notifications, setNotifications] =
-    useState([]);
-
-  const [bookingSelection, setBookingSelection] =
-    useState(null);
-
-  const [detailSource, setDetailSource] =
-    useState("My Reservation");
+  const [active, setActive] = useState("Dashboard");
+  const [query, setQuery] = useState("");
+  const [selectedReservation, setSelectedReservation] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [bookingSelection, setBookingSelection] = useState(null);
+  const [detailSource, setDetailSource] = useState("My Reservation");
 
   /*
     Keep reservations in state para ang newly submitted
     nga reservations kay mo appear dayon sa dashboard.
   */
-  const [reservationList, setReservationList] =
-    useState(RESERVATIONS);
-
-  const [reservationActivities, setReservationActivities] =
-    useState({});
-
-  const [isRescheduling, setIsRescheduling] =
-    useState(false);
-
-  const [rescheduleDate, setRescheduleDate] =
-    useState("");
-
-  const [rescheduleStartTime, setRescheduleStartTime] =
-    useState("");
-
-  const [rescheduleEndTime, setRescheduleEndTime] =
-    useState("");
-
+  const [reservationList, setReservationList] = useState(RESERVATIONS);
+  const [reservationActivities, setReservationActivities] = useState({});
+  const [isRescheduling, setIsRescheduling] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleStartTime, setRescheduleStartTime] = useState("");
+  const [rescheduleEndTime, setRescheduleEndTime] = useState("");
 
   /* =====================================================
       LOGGED-IN USER
   ====================================================== */
 
   const user = getUser();
-
-  const q =
-    query.trim().toLowerCase();
-
+  const q = query.trim().toLowerCase();
 
   /* =====================================================
       LOAD SAVED NOTIFICATIONS FROM LOCAL STORAGE
   ====================================================== */
 
   useEffect(() => {
-
-    const savedNotifications =
-      localStorage.getItem(
-        "customerNotifications"
-      );
-
-
-    if (!savedNotifications) {
-      return;
-    }
-
+    const savedNotifications = localStorage.getItem("customerNotifications");
+    if (!savedNotifications) return;
 
     try {
-
-      const parsedNotifications =
-        JSON.parse(
-          savedNotifications
-        );
-
-
-      if (
-        Array.isArray(
-          parsedNotifications
-        )
-      ) {
-
-        setNotifications(
-          parsedNotifications
-        );
-
+      const parsedNotifications = JSON.parse(savedNotifications);
+      if (Array.isArray(parsedNotifications)) {
+        setNotifications(parsedNotifications);
       }
-
     } catch (error) {
-
-      console.error(
-        "Failed to load saved notifications:",
-        error
-      );
-
+      console.error("Failed to load saved notifications:", error);
     }
-
   }, []);
-
 
   /* =====================================================
       SAVE NOTIFICATIONS TO LOCAL STORAGE
   ====================================================== */
 
-  const saveNotifications =
-    (updatedNotifications) => {
-
-      try {
-
-        localStorage.setItem(
-          "customerNotifications",
-          JSON.stringify(
-            updatedNotifications
-          )
-        );
-
-      } catch (error) {
-
-        console.error(
-          "Failed to save notifications:",
-          error
-        );
-
-      }
-
-    };
-
+  const saveNotifications = (updatedNotifications) => {
+    try {
+      localStorage.setItem(
+        "customerNotifications",
+        JSON.stringify(updatedNotifications)
+      );
+    } catch (error) {
+      console.error("Failed to save notifications:", error);
+    }
+  };
 
   /* =====================================================
       LOAD SAVED RESERVATION ACTIVITIES FROM LOCAL STORAGE
   ====================================================== */
 
   useEffect(() => {
-
-    const savedActivities =
-      localStorage.getItem(
-        "reservationActivities"
-      );
-
-
-    if (!savedActivities) {
-      return;
-    }
-
+    const savedActivities = localStorage.getItem("reservationActivities");
+    if (!savedActivities) return;
 
     try {
-
-      const parsedActivities =
-        JSON.parse(
-          savedActivities
-        );
-
-
+      const parsedActivities = JSON.parse(savedActivities);
       if (
         parsedActivities &&
         typeof parsedActivities === "object" &&
         !Array.isArray(parsedActivities)
       ) {
-
-        setReservationActivities(
-          parsedActivities
-        );
-
+        setReservationActivities(parsedActivities);
       }
-
     } catch (error) {
-
-      console.error(
-        "Failed to load saved reservation activities:",
-        error
-      );
-
+      console.error("Failed to load saved reservation activities:", error);
     }
-
   }, []);
-
 
   /* =====================================================
       SAVE RESERVATION ACTIVITIES TO LOCAL STORAGE
   ====================================================== */
 
-  const saveReservationActivities =
-    (updatedActivities) => {
-
-      try {
-
-        localStorage.setItem(
-          "reservationActivities",
-          JSON.stringify(updatedActivities)
-        );
-
-      } catch (error) {
-
-        console.error(
-          "Failed to save reservation activities:",
-          error
-        );
-
-      }
-
-    };
-
+  const saveReservationActivities = (updatedActivities) => {
+    try {
+      localStorage.setItem(
+        "reservationActivities",
+        JSON.stringify(updatedActivities)
+      );
+    } catch (error) {
+      console.error("Failed to save reservation activities:", error);
+    }
+  };
 
   /* =====================================================
       APPEND RESERVATION ACTIVITY SAFELY
       Always reads the latest localStorage value first so
       activities cannot be lost because of stale React state.
   ====================================================== */
-  const appendReservationActivity = (
-    reservationId,
-    activity
-  ) => {
-
+  const appendReservationActivity = (reservationId, activity) => {
     if (!reservationId) {
-      console.error(
-        "Cannot save reservation activity: missing reservation ID."
-      );
+      console.error("Cannot save reservation activity: missing reservation ID.");
       return;
     }
 
@@ -259,37 +151,26 @@ export default function CustomerDashboard() {
     let savedActivities = {};
 
     try {
-      const stored = localStorage.getItem(
-        "reservationActivities"
-      );
+      const stored = localStorage.getItem("reservationActivities");
 
       if (stored) {
         const parsed = JSON.parse(stored);
 
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          !Array.isArray(parsed)
-        ) {
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
           savedActivities = parsed;
         }
       }
     } catch (error) {
-      console.error(
-        "Failed to read saved reservation activities:",
-        error
-      );
+      console.error("Failed to read saved reservation activities:", error);
     }
 
-    const existingActivities =
-      Array.isArray(savedActivities[key])
-        ? savedActivities[key]
-        : [];
+    const existingActivities = Array.isArray(savedActivities[key])
+      ? savedActivities[key]
+      : [];
 
     const duplicate = existingActivities.some(
       (item) =>
-        item.action === activity.action &&
-        item.details === activity.details
+        item.action === activity.action && item.details === activity.details
     );
 
     if (duplicate) {
@@ -299,22 +180,14 @@ export default function CustomerDashboard() {
 
     const updatedActivities = {
       ...savedActivities,
-      [key]: [
-        ...existingActivities,
-        activity,
-      ],
+      [key]: [...existingActivities, activity],
     };
 
     saveReservationActivities(updatedActivities);
     setReservationActivities(updatedActivities);
 
-    console.log(
-      "Reservation activity saved locally:",
-      key,
-      activity
-    );
+    console.log("Reservation activity saved locally:", key, activity);
   };
-
 
   /* =====================================================
       LOAD RESERVATIONS FROM MONGODB
@@ -322,194 +195,91 @@ export default function CustomerDashboard() {
   ====================================================== */
 
   useEffect(() => {
-
     let intervalId;
 
     const loadReservations = async () => {
-
       try {
-
-        const customerId =
-          user?.id ||
-          user?._id;
-
+        const customerId = user?.id || user?._id;
 
         if (!customerId) {
-
-          console.warn(
-            "No customer ID found. Cannot load reservations."
-          );
-
+          console.warn("No customer ID found. Cannot load reservations.");
           return;
-
         }
 
-
-        const response =
-          await fetch(
-            "http://localhost:5000/api/reservations"
-          );
-
-
-        const data =
-          await response.json();
-
+        const response = await fetch("http://localhost:5000/api/reservations");
+        const data = await response.json();
 
         if (!response.ok) {
-
-          console.error(
-            "Load reservations error:",
-            data
-          );
-
+          console.error("Load reservations error:", data);
           return;
-
         }
-
 
         /* =================================================
             ONLY LOAD THIS CUSTOMER'S RESERVATIONS
         ================================================== */
 
-        const customerReservations =
-          data.filter(
-            (reservation) =>
-              String(
-                reservation.customerId
-              ) ===
-              String(customerId)
-          );
-
+        const customerReservations = data.filter(
+          (reservation) =>
+            String(reservation.customerId) === String(customerId)
+        );
 
         /* =================================================
             CONVERT MONGODB DATA TO DASHBOARD FORMAT
         ================================================== */
 
-        const formattedReservations =
-          customerReservations.map(
-            (reservation) => {
+        const formattedReservations = customerReservations.map(
+          (reservation) => {
+            const start = new Date(reservation.startAt);
+            const end = new Date(reservation.endAt);
 
-              const start =
-                new Date(
-                  reservation.startAt
-                );
+            const date = start.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            });
 
+            const day = start.toLocaleDateString("en-US", {
+              weekday: "short",
+            });
 
-              const end =
-                new Date(
-                  reservation.endAt
-                );
+            const checkIn = start.toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
 
+            const checkOut = end.toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
 
-              const date =
-                start.toLocaleDateString(
-                  "en-US",
-                  {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  }
-                );
+            /*
+              Find the frontend capsule
+              using the actual MongoDB capsuleId.
+            */
+            const frontendCapsule = CAPSULES.find(
+              (capsule) => capsule.capsuleId === reservation.capsuleId
+            );
 
-
-              const day =
-                start.toLocaleDateString(
-                  "en-US",
-                  {
-                    weekday: "short",
-                  }
-                );
-
-
-              const checkIn =
-                start.toLocaleTimeString(
-                  "en-US",
-                  {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }
-                );
-
-
-              const checkOut =
-                end.toLocaleTimeString(
-                  "en-US",
-                  {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }
-                );
-
-
-              /*
-                Find the frontend capsule
-                using the actual MongoDB capsuleId.
-              */
-
-              const frontendCapsule =
-                CAPSULES.find(
-                  (capsule) =>
-                    capsule.capsuleId ===
-                    reservation.capsuleId
-                );
-
-
-              return {
-
-                id:
-                  String(
-                    reservation._id ||
-                    reservation.id
-                  ),
-
-                date:
-                  `${date} (${day})`,
-
-                capsule:
-                  frontendCapsule?.id ||
-                  reservation.capsuleId,
-
-                capsuleId:
-                  reservation.capsuleId,
-
-                capsuleName:
-                  frontendCapsule?.name ||
-                  reservation.capsuleName ||
-                  "",
-
-                checkIn,
-
-                checkOut,
-
-                status:
-                  reservation.status,
-
-                guestName:
-                  reservation.guestName,
-
-                guestEmail:
-                  reservation.guestEmail,
-
-                startAt:
-                  reservation.startAt,
-
-                endAt:
-                  reservation.endAt,
-
-                durationHours:
-                  reservation.durationHours,
-
-                pricePerHour:
-                  reservation.pricePerHour,
-
-                totalPrice:
-                  reservation.totalPrice,
-
-              };
-
-            }
-          );
-
+            return {
+              id: String(reservation._id || reservation.id),
+              date: `${date} (${day})`,
+              capsule: frontendCapsule?.id || reservation.capsuleId,
+              capsuleId: reservation.capsuleId,
+              capsuleName:
+                frontendCapsule?.name || reservation.capsuleName || "",
+              checkIn,
+              checkOut,
+              status: reservation.status,
+              guestName: reservation.guestName,
+              guestEmail: reservation.guestEmail,
+              startAt: reservation.startAt,
+              endAt: reservation.endAt,
+              durationHours: reservation.durationHours,
+              pricePerHour: reservation.pricePerHour,
+              totalPrice: reservation.totalPrice,
+            };
+          }
+        );
 
         /* =================================================
             DETECT PENDING -> CONFIRMED
@@ -518,887 +288,505 @@ export default function CustomerDashboard() {
             so the customer can receive a local notification.
         ================================================== */
 
-        const statusHistoryKey =
-          `reservationStatusHistory_${customerId}`;
+        const statusHistoryKey = `reservationStatusHistory_${customerId}`;
 
         let previousStatuses = {};
 
         try {
-
-          const savedStatusHistory =
-            localStorage.getItem(
-              statusHistoryKey
-            );
+          const savedStatusHistory = localStorage.getItem(statusHistoryKey);
 
           if (savedStatusHistory) {
-            previousStatuses =
-              JSON.parse(
-                savedStatusHistory
-              ) || {};
+            previousStatuses = JSON.parse(savedStatusHistory) || {};
           }
-
         } catch (error) {
-
-          console.error(
-            "Failed to load reservation status history:",
-            error
-          );
-
+          console.error("Failed to load reservation status history:", error);
         }
 
+        const updatedStatuses = { ...previousStatuses };
 
-        const updatedStatuses = {
-          ...previousStatuses,
-        };
+        const newlyConfirmedReservations = formattedReservations.filter(
+          (reservation) =>
+            previousStatuses[reservation.id] === "Pending" &&
+            reservation.status === "Confirmed"
+        );
 
+        if (newlyConfirmedReservations.length > 0) {
+          newlyConfirmedReservations.forEach((reservation) => {
+            const confirmationActivity = {
+              action: "Reservation Confirmed",
+              details: `Reservation for Capsule ${reservation.capsule} has been confirmed by the staff.`,
+              timestamp: new Date().toLocaleString(),
+            };
 
-        const newlyConfirmedReservations =
-          formattedReservations.filter(
-            (reservation) =>
-              previousStatuses[reservation.id] ===
-                "Pending" &&
-              reservation.status ===
-                "Confirmed"
-          );
+            /* =========================================
+                SAVE CONFIRMATION ACTIVITY LOCALLY
+            ========================================== */
 
+            appendReservationActivity(reservation.id, confirmationActivity);
 
-        if (
-          newlyConfirmedReservations.length >
-          0
-        ) {
+            /* =========================================
+                SAVE CONFIRMATION NOTIFICATION LOCALLY
+            ========================================== */
 
-          newlyConfirmedReservations.forEach(
-            (reservation) => {
+            setNotifications((prev) => {
+              const notificationId = `confirmed-${reservation.id}`;
 
-              const confirmationActivity = {
+              const alreadyNotified = prev.some(
+                (notification) => notification.id === notificationId
+              );
 
-                action:
-                  "Reservation Confirmed",
+              if (alreadyNotified) {
+                return prev;
+              }
 
-                details:
-                  `Reservation for Capsule ${reservation.capsule} has been confirmed by the staff.`,
-
-                timestamp:
-                  new Date().toLocaleString(),
-
+              const confirmationNotification = {
+                id: notificationId,
+                title: "Reservation Confirmed",
+                message: `Your reservation for Capsule ${reservation.capsule} has been confirmed by the staff.`,
+                status: "Confirmed",
+                type: "confirmed",
+                timestamp: new Date().toLocaleString(),
+                read: false,
               };
 
+              const updatedNotifications = [confirmationNotification, ...prev];
 
-              /* =========================================
-                  SAVE CONFIRMATION ACTIVITY LOCALLY
-              ========================================== */
+              saveNotifications(updatedNotifications);
 
-              appendReservationActivity(
-                reservation.id,
-                confirmationActivity
-              );
-
-
-              /* =========================================
-                  SAVE CONFIRMATION NOTIFICATION LOCALLY
-              ========================================== */
-
-              setNotifications(
-                (prev) => {
-
-                  const notificationId =
-                    `confirmed-${reservation.id}`;
-
-                  const alreadyNotified =
-                    prev.some(
-                      (notification) =>
-                        notification.id ===
-                        notificationId
-                    );
-
-
-                  if (alreadyNotified) {
-                    return prev;
-                  }
-
-
-                  const confirmationNotification = {
-                    id: notificationId,
-                    title:
-                      "Reservation Confirmed",
-                    message:
-                      `Your reservation for Capsule ${reservation.capsule} has been confirmed by the staff.`,
-                    status:
-                      "Confirmed",
-                    type:
-                      "confirmed",
-                    timestamp:
-                      new Date().toLocaleString(),
-                    read: false,
-                  };
-
-
-                  const updatedNotifications = [
-                    confirmationNotification,
-                    ...prev,
-                  ];
-
-
-                  saveNotifications(
-                    updatedNotifications
-                  );
-
-                  return updatedNotifications;
-
-                }
-              );
-
-            }
-          );
-
+              return updatedNotifications;
+            });
+          });
         }
-
 
         /* =================================================
             REMEMBER THE CURRENT STATUS OF EACH RESERVATION
         ================================================== */
 
-        formattedReservations.forEach(
-          (reservation) => {
-            updatedStatuses[reservation.id] =
-              reservation.status;
-          }
-        );
-
+        formattedReservations.forEach((reservation) => {
+          updatedStatuses[reservation.id] = reservation.status;
+        });
 
         try {
-
           localStorage.setItem(
             statusHistoryKey,
-            JSON.stringify(
-              updatedStatuses
-            )
+            JSON.stringify(updatedStatuses)
           );
-
         } catch (error) {
-
-          console.error(
-            "Failed to save reservation status history:",
-            error
-          );
-
+          console.error("Failed to save reservation status history:", error);
         }
 
+        setReservationList(formattedReservations);
 
-        setReservationList(
-          formattedReservations
-        );
-
-
-        console.log(
-          "Reservations loaded from MongoDB:",
-          formattedReservations
-        );
-
+        console.log("Reservations loaded from MongoDB:", formattedReservations);
       } catch (error) {
-
-        console.error(
-          "Failed to load reservations:",
-          error
-        );
-
+        console.error("Failed to load reservations:", error);
       }
-
     };
 
-
     loadReservations();
-
 
     /*
       Poll MongoDB every 5 seconds so a staff approval
       can be detected even while the customer dashboard
       is already open.
     */
-    intervalId = setInterval(
-      loadReservations,
-      5000
-    );
-
+    intervalId = setInterval(loadReservations, 5000);
 
     return () => {
       clearInterval(intervalId);
     };
-
   }, [user?.id, user?._id]);
-
 
   /* =====================================================
       SEARCH BAR
   ====================================================== */
 
-  const filteredReservations =
-    reservationList.filter((r) =>
-      `${r.date} ${r.capsule} ${r.status}`
-        .toLowerCase()
-        .includes(q)
-    );
-
+  const filteredReservations = reservationList.filter((r) =>
+    `${r.date} ${r.capsule} ${r.status}`.toLowerCase().includes(q)
+  );
 
   /* =====================================================
       CURRENT RESERVATIONS
   ====================================================== */
 
-  const reservations =
-    filteredReservations.filter((r) =>
-      [
-        "Pending",
-        "Confirmed",
-        "Active",
-      ].includes(r.status)
-    );
-
+  const reservations = filteredReservations.filter((r) =>
+    ["Pending", "Confirmed", "Checked in", "Active"].includes(r.status)
+  );
 
   /* =====================================================
       RESERVATION HISTORY
   ====================================================== */
 
-  const historyReservations =
-    filteredReservations.filter((r) =>
-      [
-        "Completed",
-        "Cancelled",
-        "Rejected",
-      ].includes(r.status)
-    );
-
+  const historyReservations = filteredReservations.filter((r) =>
+    ["Completed", "Cancelled", "Rejected"].includes(r.status)
+  );
 
   /* =====================================================
       CAPSULE SEARCH
   ====================================================== */
 
-  const capsules =
-    CAPSULES.filter((c) =>
-      `${c.id} ${c.status}`
-        .toLowerCase()
-        .includes(q)
-    );
-
+  const capsules = CAPSULES.filter((c) =>
+    `${c.id} ${c.status}`.toLowerCase().includes(q)
+  );
 
   /* =====================================================
       DASHBOARD COUNTS
   ====================================================== */
 
-  const upcomingCount =
-    reservationList.filter((r) =>
-      [
-        "Pending",
-        "Confirmed",
-      ].includes(r.status)
-    ).length;
+  const upcomingCount = reservationList.filter((r) =>
+    ["Pending", "Confirmed"].includes(r.status)
+  ).length;
 
+  const activeCount = reservationList.filter(
+    (r) => ["Active", "Checked in"].includes(r.status)
+  ).length;
 
-  const activeCount =
-    reservationList.filter(
-      (r) => r.status === "Active"
-    ).length;
+  const completedCount = reservationList.filter(
+    (r) => r.status === "Completed"
+  ).length;
 
-
-  const completedCount =
-    reservationList.filter(
-      (r) => r.status === "Completed"
-    ).length;
-
-
-  const availableCapsuleCount =
-    CAPSULES.filter(
-      (c) => c.status === "Available"
-    ).length;
-
+  const availableCapsuleCount = CAPSULES.filter(
+    (c) => c.status === "Available"
+  ).length;
 
   /* =====================================================
       UPCOMING RESERVATION
   ====================================================== */
 
   const upcomingReservation = (() => {
-
-    const reservation =
-      reservationList.find(
-        (r) =>
-          r.status === "Pending" ||
-          r.status === "Confirmed"
-      );
-
+    const reservation = reservationList.find(
+      (r) => r.status === "Pending" || r.status === "Confirmed"
+    );
 
     if (!reservation) {
       return null;
     }
 
+    const capsule = CAPSULES.find((c) => c.id === reservation.capsule);
 
-    const capsule =
-      CAPSULES.find(
-        (c) =>
-          c.id === reservation.capsule
-      );
+    const date = new Date(`${reservation.date}T00:00:00`);
 
-
-    const date =
-      new Date(
-        `${reservation.date}T00:00:00`
-      );
-
-
-    const day =
-      date.toLocaleDateString(
-        "en-US",
-        {
-          weekday: "long",
-        }
-      );
-
+    const day = date.toLocaleDateString("en-US", {
+      weekday: "long",
+    });
 
     return {
       ...reservation,
       day,
-      image:
-        capsule?.image || null,
+      image: capsule?.image || null,
     };
-
   })();
-
 
   /* =====================================================
       DASHBOARD STAT CARDS
   ====================================================== */
 
   const dashboardStats = [
-
     {
-      label:
-        "Upcoming Reservations",
-
-      value:
-        upcomingCount,
-
+      label: "Upcoming Reservations",
+      value: upcomingCount,
       note:
         upcomingCount > 0
           ? "Reservations waiting or confirmed"
           : "No upcoming reservations",
-
-      icon:
-        CalendarDays,
-
-      tint:
-        "bg-[#CFE9DC]",
-
-      go:
-        "My Reservation",
+      icon: CalendarDays,
+      tint: "bg-[#CFE9DC]",
+      go: "My Reservation",
     },
-
-
     {
-      label:
-        "Active Reservation",
-
-      value:
-        activeCount,
-
-      note:
-        activeCount > 0
-          ? "Currently active booking"
-          : "No active bookings",
-
-      icon:
-        BedSingle,
-
-      tint:
-        "bg-[#E4D3F7]",
-
-      go:
-        "My Reservation",
+      label: "Active Reservation",
+      value: activeCount,
+      note: activeCount > 0 ? "Currently active booking" : "No active bookings",
+      icon: BedSingle,
+      tint: "bg-[#E4D3F7]",
+      go: "My Reservation",
     },
-
-
     {
-      label:
-        "Completed Visits",
-
-      value:
-        completedCount,
-
-      note:
-        "Total completed visits",
-
-      icon:
-        CalendarDays,
-
-      tint:
-        "bg-[#CFE9DC]",
-
-      go:
-        "Reservation History",
+      label: "Completed Visits",
+      value: completedCount,
+      note: "Total completed visits",
+      icon: CalendarDays,
+      tint: "bg-[#CFE9DC]",
+      go: "Reservation History",
     },
-
-
     {
-      label:
-        "Available Capsules",
-
-      value:
-        availableCapsuleCount,
-
-      note:
-        "Ready for booking",
-
-      icon:
-        BedSingle,
-
-      tint:
-        "bg-[#CFE9DC]",
-
-      go:
-        "Capsule Availability",
+      label: "Available Capsules",
+      value: availableCapsuleCount,
+      note: "Ready for booking",
+      icon: BedSingle,
+      tint: "bg-[#CFE9DC]",
+      go: "Capsule Availability",
     },
-
   ];
-
 
   /* =====================================================
       NAVIGATION
   ====================================================== */
 
   const handleNavigate = (section) => {
-
     const normalizedSection =
-      section === "History"
-        ? "Reservation History"
-        : section;
+      section === "History" ? "Reservation History" : section;
 
-
-    setActive(
-      normalizedSection
-    );
-
+    setActive(normalizedSection);
 
     if (
-      normalizedSection !==
-        "My Reservation" &&
-      normalizedSection !==
-        "Reservation History"
+      normalizedSection !== "My Reservation" &&
+      normalizedSection !== "Reservation History"
     ) {
-
-      setSelectedReservation(
-        null
-      );
-
+      setSelectedReservation(null);
     }
-
   };
-
 
   /* =====================================================
       VIEW CURRENT RESERVATION
   ====================================================== */
 
-  const handleViewReservation =
-    (reservation) => {
+  const handleViewReservation = (reservation) => {
+    setSelectedReservation(reservation);
+    setDetailSource("My Reservation");
+    setActive("My Reservation");
+  };
 
-      setSelectedReservation(
-        reservation
-      );
-
-      setDetailSource(
-        "My Reservation"
-      );
-
-      setActive(
-        "My Reservation"
-      );
-
-    };
-
-
-  const handleViewUpcomingReservation =
-    () => {
-
-      setSelectedReservation(
-        null
-      );
-
-      setActive(
-        "My Reservation"
-      );
-
-    };
-
+  const handleViewUpcomingReservation = () => {
+    setSelectedReservation(null);
+    setActive("My Reservation");
+  };
 
   /* =====================================================
       VIEW HISTORY RESERVATION
   ====================================================== */
 
-  const handleViewHistoryReservation =
-    (reservation) => {
-
-      setSelectedReservation(
-        reservation
-      );
-
-      setDetailSource(
-        "Reservation History"
-      );
-
-      setActive(
-        "Reservation History"
-      );
-
-    };
-
+  const handleViewHistoryReservation = (reservation) => {
+    setSelectedReservation(reservation);
+    setDetailSource("Reservation History");
+    setActive("Reservation History");
+  };
 
   /* =====================================================
       CANCEL RESERVATION
   ====================================================== */
 
-  const handleCancelReservation =
-    async (reservation) => {
+  const handleCancelReservation = async (reservation) => {
+    if (!reservation?.id) {
+      console.error("Cannot cancel reservation: missing reservation ID");
+      return;
+    }
 
-      if (!reservation?.id) {
+    const confirmed = window.confirm(
+      "Are you sure you want to cancel this reservation?"
+    );
 
-        console.error(
-          "Cannot cancel reservation: missing reservation ID"
-        );
+    if (!confirmed) {
+      return;
+    }
 
-        return;
+    try {
+      console.log("Cancelling reservation:", reservation);
 
-      }
+      /* =================================================
+          UPDATE MONGODB
+      ================================================== */
 
-
-      const confirmed =
-        window.confirm(
-          "Are you sure you want to cancel this reservation?"
-        );
-
-
-      if (!confirmed) {
-        return;
-      }
-
-
-      try {
-
-        console.log(
-          "Cancelling reservation:",
-          reservation
-        );
-
-
-        /* =================================================
-            UPDATE MONGODB
-        ================================================== */
-
-        const response =
-          await fetch(
-            `http://localhost:5000/api/reservations/${reservation.id}`,
-            {
-              method:
-                "PATCH",
-
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              body:
-                JSON.stringify({
-                  status:
-                    "Cancelled",
-                }),
-            }
-          );
-
-
-        const data =
-          await response.json();
-
-
-        if (!response.ok) {
-
-          console.error(
-            "Cancel reservation API error:",
-            data
-          );
-
-          alert(
-            data.message ||
-              "Could not cancel reservation."
-          );
-
-          return;
-
+      const response = await fetch(
+        `http://localhost:5000/api/reservations/${reservation.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            status: "Cancelled",
+          }),
         }
+      );
 
+      const data = await response.json();
 
-        console.log(
-          "Reservation cancelled in MongoDB:",
-          data
-        );
-
-
-        /* =================================================
-            UPDATED RESERVATION
-        ================================================== */
-
-        const updatedReservation = {
-
-          ...reservation,
-
-          status:
-            data.status ||
-            "Cancelled",
-
-        };
-
-
-        /* =================================================
-            UPDATE FRONTEND RESERVATION LIST
-        ================================================== */
-
-        setReservationList(
-          (prev) =>
-            prev.map(
-              (item) =>
-                item.id ===
-                reservation.id
-                  ? updatedReservation
-                  : item
-            )
-        );
-
-
-        /* =================================================
-            RECORD ACTIVITY
-        ================================================== */
-
-        const activity = {
-
-          action:
-            "Reservation Cancelled",
-
-          details:
-            `Reservation for Capsule ${reservation.capsule} was cancelled.`,
-
-          timestamp:
-            new Date().toLocaleString(),
-
-        };
-
-
-        appendReservationActivity(
-          reservation.id,
-          activity
-        );
-
-
-        /* =================================================
-            UPDATE SELECTED RESERVATION
-        ================================================== */
-
-        setSelectedReservation(
-          updatedReservation
-        );
-
-
-        /* =================================================
-            KEEP THE CORRECT DETAIL SOURCE
-        ================================================== */
-
-        setDetailSource(
-          active ===
-            "Reservation History"
-            ? "Reservation History"
-            : "My Reservation"
-        );
-
-
-        console.log(
-          "Reservation cancellation completed."
-        );
-
-
-      } catch (error) {
-
-        console.error(
-          "Cancel reservation error:",
-          error
-        );
-
-
-        alert(
-          "Unable to connect to the server. Please make sure your backend server is running."
-        );
-
+      if (!response.ok) {
+        console.error("Cancel reservation API error:", data);
+        alert(data.message || "Could not cancel reservation.");
+        return;
       }
 
-    };
+      console.log("Reservation cancelled in MongoDB:", data);
 
+      /* =================================================
+          UPDATED RESERVATION
+      ================================================== */
+
+      const updatedReservation = {
+        ...reservation,
+        status: data.status || "Cancelled",
+      };
+
+      /* =================================================
+          UPDATE FRONTEND RESERVATION LIST
+      ================================================== */
+
+      setReservationList((prev) =>
+        prev.map((item) =>
+          item.id === reservation.id ? updatedReservation : item
+        )
+      );
+
+      /* =================================================
+          RECORD ACTIVITY
+      ================================================== */
+
+      const activity = {
+        action: "Reservation Cancelled",
+        details: `Reservation for Capsule ${reservation.capsule} was cancelled.`,
+        timestamp: new Date().toLocaleString(),
+      };
+
+      appendReservationActivity(reservation.id, activity);
+
+      /* =================================================
+          UPDATE SELECTED RESERVATION
+      ================================================== */
+
+      setSelectedReservation(updatedReservation);
+
+      /* =================================================
+          KEEP THE CORRECT DETAIL SOURCE
+      ================================================== */
+
+      setDetailSource(
+        active === "Reservation History"
+          ? "Reservation History"
+          : "My Reservation"
+      );
+
+      console.log("Reservation cancellation completed.");
+    } catch (error) {
+      console.error("Cancel reservation error:", error);
+
+      alert(
+        "Unable to connect to the server. Please make sure your backend server is running."
+      );
+    }
+  };
 
   /* =====================================================
       RESCHEDULE RESERVATION
   ====================================================== */
 
-  const handleRescheduleReservation =
-    (reservation) => {
+  const handleRescheduleReservation = (reservation) => {
+    console.log("Reschedule reservation:", reservation);
 
-      console.log(
-        "Reschedule reservation:",
-        reservation
-      );
-
-
-      setSelectedReservation(
-        reservation
-      );
-
-
-      setRescheduleDate(
-        reservation.date || ""
-      );
-
-
-      setRescheduleStartTime(
-        reservation.checkIn || ""
-      );
-
-
-      setRescheduleEndTime(
-        reservation.checkOut || ""
-      );
-
-
-      setIsRescheduling(
-        true
-      );
-
-
-      setDetailSource(
-        "My Reservation"
-      );
-
-
-      setActive(
-        "My Reservation"
-      );
-
-    };
-
+    setSelectedReservation(reservation);
+    setRescheduleDate(dateInputValue(reservation.startAt));
+    setRescheduleStartTime(timeInputValue(reservation.startAt));
+    setRescheduleEndTime(timeInputValue(reservation.endAt));
+    setIsRescheduling(true);
+    setDetailSource("My Reservation");
+    setActive("My Reservation");
+  };
 
   /* =====================================================
       SAVE RESCHEDULE
   ====================================================== */
 
-  const handleSaveReschedule =
-    () => {
+  const handleSaveReschedule = async () => {
+    if (!selectedReservation) return;
 
-      if (!selectedReservation)
-        return;
+    const start = new Date(`${rescheduleDate}T${rescheduleStartTime}:00`);
+    const end = new Date(`${rescheduleDate}T${rescheduleEndTime}:00`);
+    const durationHours = (end.getTime() - start.getTime()) / (60 * 60 * 1000);
+    if (
+      Number.isNaN(start.getTime())
+      || !Number.isFinite(durationHours)
+      || durationHours < 0.5
+      || durationHours > 24
+    ) {
+      alert("Enter a valid reservation time from 30 minutes to 24 hours.");
+      return;
+    }
 
-
-      const oldDate =
-        selectedReservation.date;
-
-
-      const oldStartTime =
-        selectedReservation.checkIn;
-
-
-      const oldEndTime =
-        selectedReservation.checkOut;
-
-
-      const updatedReservation = {
-
-        ...selectedReservation,
-
-        date:
-          rescheduleDate,
-
-        checkIn:
-          rescheduleStartTime,
-
-        checkOut:
-          rescheduleEndTime,
-
-      };
-
-
-      setReservationList(
-        (prev) =>
-          prev.map(
-            (item) =>
-              item.id ===
-              selectedReservation.id
-                ? updatedReservation
-                : item
-          )
+    let response;
+    let data;
+    try {
+      response = await fetch(
+        `http://localhost:5000/api/reservations/${selectedReservation.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            startAt: start.toISOString(),
+            durationHours,
+          }),
+        },
       );
+      data = await response.json();
+    } catch (error) {
+      console.error("Reschedule reservation error:", error);
+      alert("Unable to connect to the server. Please try again.");
+      return;
+    }
+    if (!response.ok) {
+      alert(data.message || "Could not reschedule reservation.");
+      return;
+    }
 
+    const oldDate = selectedReservation.date;
+    const oldStartTime = selectedReservation.checkIn;
+    const oldEndTime = selectedReservation.checkOut;
 
-      const activity = {
-
-        action:
-          "Reservation Rescheduled",
-
-        details:
-          `Schedule changed from ${oldDate}, ` +
-          `${oldStartTime} - ${oldEndTime} ` +
-          `to ${rescheduleDate}, ` +
-          `${rescheduleStartTime} - ${rescheduleEndTime}.`,
-
-        timestamp:
-          new Date().toLocaleString(),
-
-      };
-
-
-      appendReservationActivity(
-        selectedReservation.id,
-        activity
-      );
-
-
-      setSelectedReservation(
-        updatedReservation
-      );
-
-
-      setIsRescheduling(
-        false
-      );
-
-
-      setRescheduleDate("");
-      setRescheduleStartTime("");
-      setRescheduleEndTime("");
-
+    const updatedReservation = {
+      ...selectedReservation,
+      date: new Date(data.startAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }) + ` (${new Date(data.startAt).toLocaleDateString("en-US", { weekday: "short" })})`,
+      checkIn: new Date(data.startAt).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      checkOut: new Date(data.endAt).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      startAt: data.startAt,
+      endAt: data.endAt,
+      durationHours: data.durationHours,
+      totalPrice: data.totalPrice,
     };
 
+    setReservationList((prev) =>
+      prev.map((item) =>
+        item.id === selectedReservation.id ? updatedReservation : item
+      )
+    );
+
+    const activity = {
+      action: "Reservation Rescheduled",
+      details: `Schedule changed from ${oldDate}, ${oldStartTime} - ${oldEndTime} to ${updatedReservation.date}, ${updatedReservation.checkIn} - ${updatedReservation.checkOut}.`,
+      timestamp: new Date().toLocaleString(),
+    };
+
+    appendReservationActivity(selectedReservation.id, activity);
+
+    setSelectedReservation(updatedReservation);
+    setIsRescheduling(false);
+    setRescheduleDate("");
+    setRescheduleStartTime("");
+    setRescheduleEndTime("");
+  };
 
   /* =====================================================
       RETURN
   ====================================================== */
 
   return (
-
     <div className="flex h-screen w-full bg-[#F5FAF7] text-[#16352A]">
-
       {/* =====================================================
           SIDEBAR
       ====================================================== */}
 
-      <Sidebar
-        active={active}
-        onNavigate={
-          handleNavigate
-        }
-      />
-
+      <Sidebar active={active} onNavigate={handleNavigate} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-
         {/* =====================================================
             HEADER
         ====================================================== */}
@@ -1407,802 +795,393 @@ export default function CustomerDashboard() {
           active={active}
           query={query}
           setQuery={setQuery}
-          onNavigate={
-            handleNavigate
-          }
-          notifications={
-            notifications
-          }
+          onNavigate={handleNavigate}
+          notifications={notifications}
         />
 
-
         <main className="flex-1 overflow-y-auto p-6 md:p-8">
-
-
           {/* =====================================================
               DASHBOARD
           ====================================================== */}
 
           {active === "Dashboard" && (
-
             <>
-
               {/* Welcome Header */}
 
               <div className="flex flex-wrap items-start justify-between gap-3">
-
                 <div>
-
                   <h2 className="text-2xl font-bold text-[#0B4A2E]">
-
-                    Welcome back,{" "}
-
-                    {user?.firstName ||
-                      "Customer"}!
-
+                    Welcome back, {user?.firstName || "Customer"}!
                   </h2>
 
-
                   <p className="mt-1 text-sm text-[#6F8E7F]">
-
-                    Manage your reservations
-                    and workspace visits.
-
+                    Manage your reservations and workspace visits.
                   </p>
-
                 </div>
-
 
                 {/* Book Capsule */}
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setActive(
-                      "Book a Capsule"
-                    )
-                  }
+                  onClick={() => setActive("Book a Capsule")}
                   className="inline-flex items-center gap-2 rounded-full bg-[#0B4A2E] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#09391F]"
                 >
-
                   <Plus className="h-4 w-4" />
-
                   Book a Capsule
-
                 </button>
-
               </div>
-
 
               {/* =================================================
                   STAT CARDS
               ================================================== */}
 
               <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-                {dashboardStats.map(
-                  (s) => (
-
-                    <StatCard
-                      key={
-                        s.label
-                      }
-                      {...s}
-                      onClick={() =>
-                        setActive(
-                          s.go
-                        )
-                      }
-                    />
-
-                  )
-                )}
-
+                {dashboardStats.map((s) => (
+                  <StatCard
+                    key={s.label}
+                    {...s}
+                    onClick={() => setActive(s.go)}
+                  />
+                ))}
               </div>
-
 
               {/* =================================================
                   UPCOMING + QUICK BOOK
               ================================================== */}
 
               <div className="mt-4 grid gap-4 lg:grid-cols-5">
-
-
                 {/* UPCOMING RESERVATION */}
 
                 <div className="lg:col-span-2">
-
                   {upcomingReservation ? (
-
                     <UpcomingReservation
-
-                      reservation={
-                        upcomingReservation
-                      }
-
-                      onView={
-                        handleViewUpcomingReservation
-                      }
-
-                      onCancel={
-                        handleCancelReservation
-                      }
-
+                      reservation={upcomingReservation}
+                      onView={handleViewUpcomingReservation}
+                      onCancel={handleCancelReservation}
                       onViewAll={() => {
-
-                        setSelectedReservation(
-                          null
-                        );
-
-                        setActive(
-                          "My Reservation"
-                        );
-
+                        setSelectedReservation(null);
+                        setActive("My Reservation");
                       }}
-
                     />
-
                   ) : (
-
                     <div className="rounded-2xl bg-white p-6 shadow-sm">
-
                       <div className="flex items-center gap-2">
-
-                        <CalendarDays
-                          className="h-5 w-5 text-[#0B4A2E]"
-                        />
+                        <CalendarDays className="h-5 w-5 text-[#0B4A2E]" />
 
                         <h3 className="font-semibold text-[#0B3B2A]">
-
                           Upcoming Reservation
-
                         </h3>
-
                       </div>
-
 
                       <div className="py-10 text-center">
-
-                        <CalendarDays
-                          className="mx-auto h-10 w-10 text-[#9AAAA2]"
-                        />
+                        <CalendarDays className="mx-auto h-10 w-10 text-[#9AAAA2]" />
 
                         <p className="mt-3 font-semibold text-[#0B3B2A]">
-
                           No upcoming reservations
-
                         </p>
-
 
                         <p className="mt-1 text-sm text-[#6F8E7F]">
-
-                          Book a capsule
-                          to get started.
-
+                          Book a capsule to get started.
                         </p>
-
                       </div>
-
                     </div>
-
                   )}
-
                 </div>
-
 
                 {/* QUICK BOOK */}
 
                 <div className="lg:col-span-3">
-
                   <QuickBook
-
-                    capsules={
-                      capsules
-                    }
-
-                    onReserve={
-                      (capsuleId) => {
-
-                        console.log(
-                          "Reserve capsule:",
-                          capsuleId
-                        );
-
-                        setActive(
-                          "Book a Capsule"
-                        );
-
-                      }
-                    }
-
-                    onViewAll={() =>
-                      setActive(
-                        "Book a Capsule"
-                      )
-                    }
-
+                    capsules={capsules}
+                    onReserve={(capsuleId) => {
+                      console.log("Reserve capsule:", capsuleId);
+                      setActive("Book a Capsule");
+                    }}
+                    onViewAll={() => setActive("Book a Capsule")}
                   />
-
                 </div>
-
               </div>
-
 
               {/* AVAILABLE SPACES */}
 
               <div className="mt-6">
-
                 <AvailableSpaces
-
-                  onViewAvailability={() =>
-                    setActive(
-                      "Capsule Availability"
-                    )
-                  }
-
+                  onViewAvailability={() => setActive("Capsule Availability")}
                 />
-
               </div>
-
             </>
-
           )}
-
 
           {/* =====================================================
               MY RESERVATION
           ====================================================== */}
 
           {active === "My Reservation" && (
-
             <>
-
-              {selectedReservation &&
-              detailSource ===
-                "My Reservation" ? (
-
+              {selectedReservation && detailSource === "My Reservation" ? (
                 <>
-
                   {isRescheduling ? (
-
                     <div className="rounded-2xl bg-white p-6 shadow-sm">
-
                       <div className="border-b border-[#E4EFE9] pb-4">
-
                         <h2 className="text-xl font-bold text-[#0B3B2A]">
-
                           Reschedule Reservation
-
                         </h2>
 
-
                         <p className="mt-1 text-sm text-[#6F8E7F]">
-
-                          Update your
-                          reservation date
-                          and time.
-
+                          Update your reservation date and time.
                         </p>
-
                       </div>
 
-
                       <div className="mt-6 grid gap-5 sm:grid-cols-3">
-
                         {/* DATE */}
 
                         <div>
-
                           <label className="mb-2 block text-sm font-medium text-[#0B3B2A]">
-
                             Date
-
                           </label>
 
-
                           <input
-
                             type="date"
-
-                            value={
-                              rescheduleDate
-                            }
-
-                            onChange={(e) =>
-                              setRescheduleDate(
-                                e.target.value
-                              )
-                            }
-
+                            value={rescheduleDate}
+                            onChange={(e) => setRescheduleDate(e.target.value)}
                             className="w-full rounded-lg border border-[#CFE3D9] px-3 py-2.5 text-sm outline-none focus:border-[#0B4A2E]"
-
                           />
-
                         </div>
-
 
                         {/* CHECK-IN */}
 
                         <div>
-
                           <label className="mb-2 block text-sm font-medium text-[#0B3B2A]">
-
                             Check-in
-
                           </label>
 
-
                           <input
-
                             type="time"
-
-                            value={
-                              rescheduleStartTime
-                            }
-
+                            value={rescheduleStartTime}
                             onChange={(e) =>
-                              setRescheduleStartTime(
-                                e.target.value
-                              )
+                              setRescheduleStartTime(e.target.value)
                             }
-
                             className="w-full rounded-lg border border-[#CFE3D9] px-3 py-2.5 text-sm outline-none focus:border-[#0B4A2E]"
-
                           />
-
                         </div>
-
 
                         {/* CHECK-OUT */}
 
                         <div>
-
                           <label className="mb-2 block text-sm font-medium text-[#0B3B2A]">
-
                             Check-out
-
                           </label>
 
-
                           <input
-
                             type="time"
-
-                            value={
-                              rescheduleEndTime
-                            }
-
+                            value={rescheduleEndTime}
                             onChange={(e) =>
-                              setRescheduleEndTime(
-                                e.target.value
-                              )
+                              setRescheduleEndTime(e.target.value)
                             }
-
                             className="w-full rounded-lg border border-[#CFE3D9] px-3 py-2.5 text-sm outline-none focus:border-[#0B4A2E]"
-
                           />
-
                         </div>
-
                       </div>
-
 
                       <div className="mt-6 flex gap-3 border-t border-[#E4EFE9] pt-5">
-
                         <button
-
                           type="button"
-
-                          onClick={() =>
-                            setIsRescheduling(
-                              false
-                            )
-                          }
-
+                          onClick={() => setIsRescheduling(false)}
                           className="rounded-lg border border-[#CFE3D9] px-4 py-2.5 text-sm font-medium text-[#0B4A2E] hover:bg-[#EEF7F2]"
-
                         >
-
                           Back
-
                         </button>
-
 
                         <button
-
                           type="button"
-
-                          onClick={
-                            handleSaveReschedule
-                          }
-
+                          onClick={handleSaveReschedule}
                           className="rounded-lg bg-[#0B4A2E] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#09391F]"
-
                         >
-
                           Save Changes
-
                         </button>
-
                       </div>
-
                     </div>
-
                   ) : (
-
                     <ReservationDetails
-
-                      reservation={
-                        selectedReservation
-                      }
-
+                      reservation={selectedReservation}
                       activities={
-                        reservationActivities[
-                          selectedReservation?.id
-                        ] || []
+                        reservationActivities[selectedReservation?.id] || []
                       }
-
                       onBack={() => {
-
-                        setSelectedReservation(
-                          null
-                        );
-
-                        setActive(
-                          "My Reservation"
-                        );
-
+                        setSelectedReservation(null);
+                        setActive("My Reservation");
                       }}
-
-                      onCancel={
-                        handleCancelReservation
-                      }
-
-                      onReschedule={
-                        handleRescheduleReservation
-                      }
-
+                      onCancel={handleCancelReservation}
+                      onReschedule={handleRescheduleReservation}
                     />
-
                   )}
-
                 </>
-
               ) : (
-
                 <MyReservations
-
-                  reservations={
-                    reservations
-                  }
-
-                  onView={
-                    handleViewReservation
-                  }
-
-                  onCancel={
-                    handleCancelReservation
-                  }
-
-                  onReschedule={
-                    handleRescheduleReservation
-                  }
-
+                  reservations={reservations}
+                  onView={handleViewReservation}
+                  onCancel={handleCancelReservation}
+                  onReschedule={handleRescheduleReservation}
                   onViewHistory={() => {
-
-                    setSelectedReservation(
-                      null
-                    );
-
-                    setDetailSource(
-                      "Reservation History"
-                    );
-
-                    setActive(
-                      "Reservation History"
-                    );
-
+                    setSelectedReservation(null);
+                    setDetailSource("Reservation History");
+                    setActive("Reservation History");
                   }}
-
                 />
-
               )}
-
             </>
-
           )}
-
 
           {/* =====================================================
               CAPSULE AVAILABILITY
           ====================================================== */}
 
-          {active ===
-            "Capsule Availability" && (
-
+          {active === "Capsule Availability" && (
             <CapsuleAvailability
-
               onBook={(selection) => {
-
-                setBookingSelection(
-                  selection
-                );
-
-                setActive(
-                  "Book a Capsule"
-                );
-
+                setBookingSelection(selection);
+                setActive("Book a Capsule");
               }}
-
             />
-
           )}
-
 
           {/* =====================================================
               BOOK A CAPSULE
           ====================================================== */}
 
-          {active ===
-            "Book a Capsule" && (
-
+          {active === "Book a Capsule" && (
             <BookCapsule
-
-              capsules={
-                CAPSULES
-              }
-
-              bookingSelection={
-                bookingSelection
-              }
-
-              onBack={() =>
-                setActive(
-                  "Dashboard"
-                )
-              }
-
-
+              capsules={CAPSULES}
+              bookingSelection={bookingSelection}
+              onBack={() => setActive("Dashboard")}
               /* =================================================
                   SUBMIT RESERVATION
               ================================================== */
-
-              onSubmit={async (
-                reservation
-              ) => {
-
+              onSubmit={async (reservation) => {
                 try {
-
-                  console.log(
-                    "Reservation submitted:",
-                    reservation
-                  );
-
+                  console.log("Reservation submitted:", reservation);
 
                   /* =================================================
                       GET LOGGED-IN CUSTOMER ID
                   ================================================== */
 
-                  const customerId =
-                    user?.id ||
-                    user?._id;
-
+                  const customerId = user?.id || user?._id;
 
                   if (!customerId) {
-
                     alert(
                       "Customer account information is missing. Please log in again."
                     );
-
                     return;
-
                   }
-
 
                   /* =================================================
                       FIND ACTUAL MONGODB CAPSULE
                   ================================================== */
 
-                  const selectedCapsule =
-                    CAPSULES.find(
-                      (capsule) =>
-                        capsule.id ===
-                        reservation.capsule
-                    );
+                  const selectedCapsule = CAPSULES.find(
+                    (capsule) => capsule.id === reservation.capsule
+                  );
 
-
-                  if (
-                    !selectedCapsule ||
-                    !selectedCapsule.capsuleId
-                  ) {
-
+                  if (!selectedCapsule || !selectedCapsule.capsuleId) {
                     alert(
                       "Selected capsule could not be found. Please select another capsule."
                     );
 
-                    console.error(
-                      "Capsule mapping error:",
-                      reservation.capsule
-                    );
-
+                    console.error("Capsule mapping error:", reservation.capsule);
                     return;
-
                   }
 
-
-                  console.log(
-                    "Selected frontend capsule:",
-                    selectedCapsule.id
-                  );
-
+                  console.log("Selected frontend capsule:", selectedCapsule.id);
                   console.log(
                     "Actual MongoDB capsule ID:",
                     selectedCapsule.capsuleId
                   );
 
-
                   /* =================================================
                       CALCULATE RESERVATION TIME
                   ================================================== */
 
-                  const start =
-                    new Date(
-                      `${reservation.date}T${reservation.checkIn}:00`
-                    );
+                  const start = new Date(
+                    `${reservation.date}T${reservation.checkIn}:00`
+                  );
 
-
-                  const end =
-                    new Date(
-                      `${reservation.date}T${reservation.checkOut}:00`
-                    );
-
+                  const end = new Date(
+                    `${reservation.date}T${reservation.checkOut}:00`
+                  );
 
                   const durationHours =
-                    (
-                      end.getTime() -
-                      start.getTime()
-                    ) /
-                    (1000 * 60 * 60);
+                    (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
-
-                  if (
-                    !Number.isFinite(
-                      durationHours
-                    ) ||
-                    durationHours <= 0
-                  ) {
-
+                  if (!Number.isFinite(durationHours) || durationHours <= 0) {
                     alert(
                       "Invalid reservation time. Please check your check-in and check-out time."
                     );
-
                     return;
-
                   }
-
 
                   /* =================================================
                       SEND RESERVATION TO BACKEND
                   ================================================== */
 
-                  const response =
-                    await fetch(
-                      "http://localhost:5000/api/reservations",
-                      {
-                        method:
-                          "POST",
+                  const response = await fetch(
+                    "http://localhost:5000/api/reservations",
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        customerId: customerId,
+                        capsuleId: selectedCapsule.capsuleId,
+                        startAt: start.toISOString(),
+                        durationHours: durationHours,
+                        status: "Pending",
+                      }),
+                    }
+                  );
 
-                        headers: {
-                          "Content-Type":
-                            "application/json",
-                        },
-
-                        body:
-                          JSON.stringify({
-
-                            customerId:
-                              customerId,
-
-                            capsuleId:
-                              selectedCapsule.capsuleId,
-
-                            startAt:
-                              start.toISOString(),
-
-                            durationHours:
-                              durationHours,
-
-                            status:
-                              "Pending",
-
-                          }),
-                      }
-                    );
-
-
-                  const data =
-                    await response.json();
-
+                  const data = await response.json();
 
                   /* =================================================
                       HANDLE BACKEND ERROR
                   ================================================== */
 
-                  if (
-                    !response.ok
-                  ) {
-
-                    console.error(
-                      "Reservation API error:",
-                      data
-                    );
-
-                    alert(
-                      data.message ||
-                        "Could not submit reservation."
-                    );
-
+                  if (!response.ok) {
+                    console.error("Reservation API error:", data);
+                    alert(data.message || "Could not submit reservation.");
                     return;
-
                   }
 
-                  console.log(
-                    "Reservation saved to MongoDB:",
-                    data
-                  );
-
+                  console.log("Reservation saved to MongoDB:", data);
 
                   /* =================================================
                       CREATE FRONTEND RESERVATION
                   ================================================== */
 
                   const newReservation = {
-
                     ...reservation,
 
-                    id:
-                      String(
-                        data._id ||
+                    id: String(
+                      data._id ||
                         data.id ||
                         data.reservation?._id ||
                         data.reservation?.id ||
                         data.data?._id ||
                         data.data?.id ||
                         Date.now()
-                      ),
+                    ),
 
-                    status:
-                      data.status ||
-                      "Pending",
-
-                    capsule:
-                      reservation.capsule,
-
-                    capsuleId:
-                      data.capsuleId ||
-                      selectedCapsule.capsuleId,
-
+                    status: data.status || "Pending",
+                    capsule: reservation.capsule,
+                    capsuleId: data.capsuleId || selectedCapsule.capsuleId,
                     capsuleName:
-                      reservation.capsuleName ||
-                      selectedCapsule.name,
-
-                    databaseName:
-                      selectedCapsule.databaseName,
-
-                    pricePerHour:
-                      selectedCapsule.pricePerHour,
-
-                    date:
-                      reservation.date,
-
-                    checkIn:
-                      reservation.checkIn,
-
-                    checkOut:
-                      reservation.checkOut,
-
+                      reservation.capsuleName || selectedCapsule.name,
+                    databaseName: selectedCapsule.databaseName,
+                    pricePerHour: selectedCapsule.pricePerHour,
+                    date: reservation.date,
+                    checkIn: reservation.checkIn,
+                    checkOut: reservation.checkOut,
                   };
-
 
                   /* =================================================
                       REMEMBER INITIAL PENDING STATUS LOCALLY
@@ -2211,327 +1190,166 @@ export default function CustomerDashboard() {
                   ================================================== */
 
                   try {
-
-                    const statusHistoryKey =
-                      `reservationStatusHistory_${customerId}`;
+                    const statusHistoryKey = `reservationStatusHistory_${customerId}`;
 
                     const savedStatusHistory =
-                      localStorage.getItem(
-                        statusHistoryKey
-                      );
+                      localStorage.getItem(statusHistoryKey);
 
-                    const statusHistory =
-                      savedStatusHistory
-                        ? JSON.parse(
-                            savedStatusHistory
-                          ) || {}
-                        : {};
+                    const statusHistory = savedStatusHistory
+                      ? JSON.parse(savedStatusHistory) || {}
+                      : {};
 
-                    statusHistory[newReservation.id] =
-                      newReservation.status;
+                    statusHistory[newReservation.id] = newReservation.status;
 
                     localStorage.setItem(
                       statusHistoryKey,
-                      JSON.stringify(
-                        statusHistory
-                      )
+                      JSON.stringify(statusHistory)
                     );
-
                   } catch (error) {
-
                     console.error(
                       "Failed to save initial reservation status:",
                       error
                     );
-
                   }
-
 
                   /* =================================================
                       CREATE NOTIFICATION
                   ================================================== */
 
                   const notification = {
-
-                    id:
-                      Date.now(),
-
-                    title:
-                      "Reservation Request Submitted",
-
-                    message:
-                      `Your reservation request for Capsule ${newReservation.capsule} has been submitted. Please wait for the admin to review and confirm your reservation.`,
-
-                    status:
-                      "Pending",
-
-                    type:
-                      "pending",
-
-                    timestamp:
-                      new Date().toLocaleString(),
-
-                    read:
-                      false,
-
+                    id: Date.now(),
+                    title: "Reservation Request Submitted",
+                    message: `Your reservation request for Capsule ${newReservation.capsule} has been submitted. Please wait for the admin to review and confirm your reservation.`,
+                    status: "Pending",
+                    type: "pending",
+                    timestamp: new Date().toLocaleString(),
+                    read: false,
                   };
-
 
                   /* =================================================
                       SAVE NOTIFICATION LOCALLY
                   ================================================== */
 
-                  setNotifications(
-                    (prev) => {
+                  setNotifications((prev) => {
+                    const updatedNotifications = [notification, ...prev];
 
-                      const updatedNotifications =
-                        [
-                          notification,
-                          ...prev,
-                        ];
+                    saveNotifications(updatedNotifications);
 
-
-                      saveNotifications(
-                        updatedNotifications
-                      );
-
-
-                      return updatedNotifications;
-
-                    }
-                  );
-
+                    return updatedNotifications;
+                  });
 
                   /* =================================================
                       UPDATE FRONTEND RESERVATION LIST
                   ================================================== */
 
-                  setReservationList(
-                    (prev) => [
-                      newReservation,
-                      ...prev,
-                    ]
-                  );
-
+                  setReservationList((prev) => [newReservation, ...prev]);
 
                   /* =================================================
                       RECORD ACTIVITY
                   ================================================== */
 
                   const activity = {
-
-                    action:
-                      "Reservation Submitted",
-
-                    details:
-                      `Reservation for Capsule ${newReservation.capsule} was submitted.`,
-
-                    timestamp:
-                      new Date().toLocaleString(),
-
+                    action: "Reservation Submitted",
+                    details: `Reservation for Capsule ${newReservation.capsule} was submitted.`,
+                    timestamp: new Date().toLocaleString(),
                   };
 
-
-                  appendReservationActivity(
-                    newReservation.id,
-                    activity
-                  );
-
+                  appendReservationActivity(newReservation.id, activity);
 
                   /* =================================================
                       SHOW RESERVATION DETAILS
                   ================================================== */
 
-                  setSelectedReservation(
-                    newReservation
-                  );
-
-
-                  setDetailSource(
-                    "My Reservation"
-                  );
-
-
-                  setActive(
-                    "My Reservation"
-                  );
-
-
-                } catch (
-                  error
-                ) {
-
-                  console.error(
-                    "Submit reservation error:",
-                    error
-                  );
-
+                  setSelectedReservation(newReservation);
+                  setDetailSource("My Reservation");
+                  setActive("My Reservation");
+                } catch (error) {
+                  console.error("Submit reservation error:", error);
 
                   alert(
                     "Unable to connect to the server. Please make sure your backend server is running."
                   );
-
                 }
-
               }}
-
             />
-
           )}
-
 
           {/* =====================================================
               RESERVATION HISTORY
           ====================================================== */}
 
-          {active ===
-            "Reservation History" && (
-
+          {active === "Reservation History" && (
             <>
-
-              {selectedReservation &&
-              detailSource ===
-                "Reservation History" ? (
-
+              {selectedReservation && detailSource === "Reservation History" ? (
                 <ReservationDetails
-
-                  reservation={
-                    selectedReservation
-                  }
-
+                  reservation={selectedReservation}
                   activities={
-                    reservationActivities[
-                      selectedReservation?.id
-                    ] || []
+                    reservationActivities[selectedReservation?.id] || []
                   }
-
                   onBack={() => {
-
-                    setSelectedReservation(
-                      null
-                    );
-
-                    setActive(
-                      "Reservation History"
-                    );
-
+                    setSelectedReservation(null);
+                    setActive("Reservation History");
                   }}
-
-                  onCancel={
-                    handleCancelReservation
-                  }
-
-                  onReschedule={
-                    handleRescheduleReservation
-                  }
-
+                  onCancel={handleCancelReservation}
+                  onReschedule={handleRescheduleReservation}
                 />
-
               ) : (
-
                 <ReservationHistory
-
-                  reservations={
-                    historyReservations
-                  }
-
+                  reservations={historyReservations}
                   onView={(reservation) => {
-
-                    setSelectedReservation(
-                      reservation
-                    );
-
-                    setDetailSource(
-                      "Reservation History"
-                    );
-
+                    setSelectedReservation(reservation);
+                    setDetailSource("Reservation History");
                   }}
-
                 />
-
               )}
-
             </>
-
           )}
-
 
           {/* =====================================================
               NOTIFICATION
           ====================================================== */}
 
-          {active ===
-            "Notification" && (
-
-            <Notification
-
-              notifications={
-                notifications
-              }
-
-            />
-
+          {active === "Notification" && (
+            <Notification notifications={notifications} />
           )}
-
 
           {/* =====================================================
               PROFILE
           ====================================================== */}
 
-          {active ===
-            "Profile" && (
+          {active === "Profile" && <Profile user={user} />}
 
-            <Profile
-              user={user}
-            />
+          {/* =====================================================
+              ACTIVITY LOG (the customer's own audit log)
+          ====================================================== */}
 
+          {active === "Activity Log" && (
+            <ActivityLog userId={user?.id || user?._id} />
           )}
-
 
           {/* =====================================================
               HELP & SUPPORT
           ====================================================== */}
 
-          {active ===
-            "Help & Support" && (
-
+          {active === "Help & Support" && (
             <div className="rounded-2xl bg-white p-8 shadow-sm">
-
               <h2 className="text-2xl font-bold text-[#0B4A2E]">
-
                 Help & Support
-
               </h2>
 
-
               <p className="mt-2 text-sm text-[#6F8E7F]">
-
-                Need help? Contact the Forrest
-                co-working space team.
-
+                Need help? Contact the Forrest co-working space team.
               </p>
 
-
               <div className="mt-6 rounded-xl bg-[#F5FAF7] p-5">
-
                 <p className="text-sm text-[#6F8E7F]">
-
-                  Help and support information
-                  will be added here.
-
+                  Help and support information will be added here.
                 </p>
-
               </div>
-
             </div>
-
           )}
-
         </main>
-
       </div>
-
     </div>
-
   );
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Eye, EyeOff, User, Mail, Lock } from 'lucide-react'
 import { signInWithPopup } from 'firebase/auth'
-import { auth, googleProvider } from './firebase'
+import { getFirebaseAuth, googleProvider } from './firebase'
 import { useNavigate } from 'react-router-dom'
 import useSettings from './useSettings2'
 import backgroundImage from './assets/page_background.jpg'
@@ -20,6 +20,7 @@ function CustomerSignUp() {
   })
 
   const navigate = useNavigate()
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   // On/off settings from the admin Settings page
   const settings = useSettings()
@@ -45,6 +46,10 @@ function CustomerSignUp() {
   // Handle normal form submission
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (formData.password !== confirmPassword) {
+      setStatus({ loading: false, error: 'Passwords do not match.', success: '' })
+      return
+    }
     setStatus({ loading: true, error: '', success: '' })
 
     try {
@@ -68,7 +73,7 @@ function CustomerSignUp() {
     setStatus({ loading: true, error: '', success: '' })
 
     try {
-      const result = await signInWithPopup(auth, googleProvider)
+      const result = await signInWithPopup(await getFirebaseAuth(), googleProvider)
       const idToken = await result.user.getIdToken()
 
       const res = await fetch('http://localhost:5000/api/auth/google-sync', {
@@ -109,7 +114,7 @@ function CustomerSignUp() {
         {/* LEFT CARD */}
         <div
           style={{ flex: 0.8 }}
-          className="signup-left-card relative bg-white/90 rounded-2xl p-8 md:p-6 flex flex-col justify-center"
+          className="signup-left-card relative min-h-0 overflow-y-auto bg-white/90 rounded-2xl p-8 md:p-6 flex flex-col justify-center"
         >
 
           <h2 className="text-2xl font-bold text-green-800 mb-1 mt-4">
@@ -267,6 +272,7 @@ function CustomerSignUp() {
                   value={formData.password}
                   onChange={handleChange}
                   required
+                  minLength={8}
                   className={`${inputClass} pr-10 pl-10`}
                 />
 
@@ -283,6 +289,34 @@ function CustomerSignUp() {
               <h4 className="text-xs text-gray-600">
                 Use 8+ characters with a mix of letters, numbers, and symbols
               </h4>
+
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="confirmPassword"
+                  className="text-xs font-semibold text-green-800"
+                >
+                  Re-enter Password
+                </label>
+
+                <div className="relative">
+                  <Lock
+                    size={18}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  />
+                  <input
+                    type="password"
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    placeholder="Re-enter password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    className={`${inputClass} pl-10`}
+                  />
+                </div>
+              </div>
 
               {/* TERMS */}
               <div className="flex items-start gap-2">

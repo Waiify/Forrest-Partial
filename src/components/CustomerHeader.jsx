@@ -1,5 +1,6 @@
 import { Bell, Search, User, LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { recordLogout } from "../auditLogout.js";
 
 export default function Header({
   active,
@@ -125,7 +126,8 @@ export default function Header({
   }, []);
 
   // Logout
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await recordLogout();
     sessionStorage.removeItem("user");
     sessionStorage.removeItem("token");
     sessionStorage.removeItem("pendingToken");

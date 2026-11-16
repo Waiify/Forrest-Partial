@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
+import "./installUserHeader.js";
+import StaffPermissionGate from './components/StaffPermissionGate.jsx'
 
 
 import LandingPage from './LandingPage.jsx'
@@ -23,9 +25,9 @@ import StaffSpacesandServicesAvailability from './StaffSpacesandServicesAvailabi
 import AdminSettings from './AdminSettings.jsx'
 import AdminReports from './AdminReports.jsx'
 import StaffReservation from './StaffReservations.jsx'
-
-
-
+import StaffQRScanner from './StaffQRScanner.jsx'
+import AdminauditLogs from './AdminauditLogs.jsx'
+import StaffLogs from './StaffLogs.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -48,28 +50,32 @@ createRoot(document.getElementById('root')).render(
         <Route path="/verify-code" element={<VerifyCode />} />
 
         {/* Dashboard and customer pages / Dashboard ug customer pages. */}
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard" element={<StaffPermissionGate resource="adminOnly" action="view" fallback="/StaffDashboard"><Dashboard /></StaffPermissionGate>} />
         <Route path="/adminDashboard" element={<Navigate to="/dashboard" replace />} />
         <Route path="/customer-dashboard" element={<CustomerDashboard />} />
-        <Route path="/reservation" element={<AdminReservation />} />
+        <Route path="/reservation" element={<StaffPermissionGate resource="adminOnly" action="view" fallback="/StaffReservation"><AdminReservation /></StaffPermissionGate>} />
         <Route path="/AdminReservation" element={<Navigate to="/reservation" replace />} />
-        <Route path="/settings" element={<AdminSettings />} />
-        <Route path="/reports" element={<AdminReports />} />
+        <Route path="/settings" element={<StaffPermissionGate resource="adminOnly" action="view"><AdminSettings /></StaffPermissionGate>} />
+        <Route path="/reports" element={<StaffPermissionGate resource="reports" action="view"><AdminReports /></StaffPermissionGate>} />
+        <Route path="/audit-logs" element={<StaffPermissionGate resource="auditLogs" action="view"><AdminauditLogs /></StaffPermissionGate>} />
        
-        <Route path="/staff-dashboard" element={<StaffDashboard />} />
-        <Route path="/StaffDashboard" element={<StaffDashboard />} />
-        <Route path="/StaffSpacesandServicesManagement" element={<StaffSpacesandServicesManagement />} />
-        <Route path="/StaffSpacesandServicesAvailability" element={<StaffSpacesandServicesAvailability />} />
-        <Route path="/StaffReservation" element={<StaffReservation />} />
-        <Route path="/customers" element={<Customers />} />
+        <Route path="/staff-dashboard" element={<StaffPermissionGate resource="dashboard" action="view"><StaffDashboard /></StaffPermissionGate>} />
+        <Route path="/StaffDashboard" element={<StaffPermissionGate resource="dashboard" action="view"><StaffDashboard /></StaffPermissionGate>} />
+        <Route path="/StaffSpacesandServicesManagement" element={<StaffPermissionGate resource="spaces" action="view"><StaffSpacesandServicesManagement /></StaffPermissionGate>} />
+        <Route path="/StaffSpacesandServicesAvailability" element={<StaffPermissionGate resource="spaces" action="view"><StaffSpacesandServicesAvailability /></StaffPermissionGate>} />
+        <Route path="/StaffReservation" element={<StaffPermissionGate resource="reservations" action="view"><StaffReservation /></StaffPermissionGate>} />
+        <Route path="/StaffReservationHistory" element={<StaffPermissionGate resource="reservations" action="view"><StaffReservation /></StaffPermissionGate>} />
+        <Route path="/StaffQRScanner" element={<StaffPermissionGate resource="reservations" action="update"><StaffQRScanner /></StaffPermissionGate>} />
+        <Route path="/StaffSystemLogs" element={<StaffLogs />} />
+        <Route path="/customers" element={<StaffPermissionGate resource="customers" action="view"><Customers /></StaffPermissionGate>} />
 
         {/* Management pages / Pages para sa management. */}
-        <Route path="/management" element={<Management />} />
-        <Route path="/staff-management" element={<Management />} />
+        <Route path="/management" element={<StaffPermissionGate resource="adminOnly" action="view"><Management /></StaffPermissionGate>} />
+        <Route path="/staff-management" element={<StaffPermissionGate resource="adminOnly" action="view"><Management /></StaffPermissionGate>} />
         
-        <Route path="/capsule" element={<AdminCapsule />} />
+        <Route path="/capsule" element={<StaffPermissionGate resource="adminOnly" action="view" fallback="/StaffSpacesandServicesManagement"><AdminCapsule /></StaffPermissionGate>} />
         <Route path="/capsules" element={<Navigate to="/capsule" replace />} />
-        <Route path="/admincapsule" element={<AdminCapsule />} />
+        <Route path="/admincapsule" element={<StaffPermissionGate resource="adminOnly" action="view" fallback="/StaffSpacesandServicesManagement"><AdminCapsule /></StaffPermissionGate>} />
 
         {/* Fallback route / If no route matches, go to the landing page. */}
         <Route path="*" element={<Navigate to="/" replace />} />

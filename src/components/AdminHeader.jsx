@@ -1,9 +1,10 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { Bell, LogOut, Search, Settings, User } from "lucide-react";
 
-import { auth } from "../firebase";
+import { getFirebaseAuth } from "../firebase";
+import { recordLogout } from "../auditLogout.js";
 
 // USBA ang mga route ngadto sa tinuod nimong routes sa main.jsx
 const LOGIN_ROUTE = "/";
@@ -121,8 +122,10 @@ export default function AdminHeader({
     setMenuOpen(false);
     setNotificationsOpen(false);
 
+    await recordLogout();
+
     try {
-      await signOut(auth);
+      await signOut(await getFirebaseAuth());
     } catch (error) {
       console.error("Firebase sign out error:", error);
     }

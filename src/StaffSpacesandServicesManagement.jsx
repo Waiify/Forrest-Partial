@@ -5,6 +5,7 @@ import { ChevronDown, Plus, X, Archive, RotateCcw } from "lucide-react";
 
 import StaffHeader from "./components/StaffHeader.jsx";
 import StaffSidebar from "./components/StaffSidebar.jsx";
+import { hasCurrentPermission } from "./permissionUtils.js";
 
 const API = "http://localhost:5000/api";
 
@@ -113,7 +114,7 @@ const inputCls =
   "h-10 w-full rounded-lg border border-[#CFE3D9] bg-white px-3 text-sm text-[#0B3B2A] outline-none placeholder:text-[#8AA699] focus:border-[#2F9E7A] focus:ring-2 focus:ring-[#2F9E7A]/25";
 
 // One gray card for a room, holding all of its tiles
-function RoomCard({ title, items, onEdit, onAdd }) {
+function RoomCard({ title, items, onEdit, onAdd, canEdit, canAdd }) {
   return (
     <div className="min-h-[170px] rounded-[20px] bg-[#b3b3b3] px-4 pb-5 pt-4">
       <div className="mb-3 flex items-start justify-between">
@@ -123,14 +124,16 @@ function RoomCard({ title, items, onEdit, onAdd }) {
             ({items.length})
           </span>
         </h3>
-        <button
-          type="button"
-          onClick={() => onAdd(title)}
-          aria-label={`Add to ${title}`}
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-white/30 text-white hover:bg-white/50"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+        {canAdd && (
+          <button
+            type="button"
+            onClick={() => onAdd(title)}
+            aria-label={`Add to ${title}`}
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-white/30 text-white hover:bg-white/50"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {items.length === 0 ? (
@@ -141,13 +144,14 @@ function RoomCard({ title, items, onEdit, onAdd }) {
         <div className="flex flex-wrap justify-center gap-3">
           {items.map((capsule) => {
             const s = STATUS[capsule.status] ?? STATUS["Available"];
+            const Tile = canEdit ? "button" : "div";
             return (
-              <button
+              <Tile
                 key={capsule.id}
-                type="button"
-                onClick={() => onEdit(capsule.id)}
+                type={canEdit ? "button" : undefined}
+                onClick={canEdit ? () => onEdit(capsule.id) : undefined}
                 title={`${capsule.id} · ${capsule.type} · ${capsule.price}`}
-                className={`flex h-[88px] w-[88px] flex-col items-center justify-center rounded-[14px] ${s.tile} ${s.text} shadow-sm transition hover:-translate-y-0.5 hover:shadow-md`}
+                className={`flex h-[88px] w-[88px] flex-col items-center justify-center rounded-[14px] ${s.tile} ${s.text} shadow-sm ${canEdit ? "transition hover:-translate-y-0.5 hover:shadow-md" : ""}`}
               >
                 <span className="text-[19px] font-medium leading-none">
                   {capsule.capsule}
@@ -157,7 +161,7 @@ function RoomCard({ title, items, onEdit, onAdd }) {
                     ? "Maintenance"
                     : capsule.status}
                 </span>
-              </button>
+              </Tile>
             );
           })}
         </div>
@@ -184,6 +188,9 @@ export default function StaffSpacesandServicesManagement() {
   // Modal: null (closed), "add", or "edit"
   const [modalMode, setModalMode] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const canCreate = hasCurrentPermission("spaces", "create");
+  const canEdit = hasCurrentPermission("spaces", "update");
+  const canDelete = hasCurrentPermission("spaces", "delete");
 
   const active =
     Object.entries(ROUTES).find(
@@ -400,13 +407,15 @@ export default function StaffSpacesandServicesManagement() {
                 options={["All status", ...STATUS_OPTIONS]}
                 className="w-48"
               />
-              <button
-                type="button"
-                onClick={() => openAddModal()}
-                className="ml-auto inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#2F9E7A] px-4 text-sm font-semibold text-white transition hover:bg-[#2a8f6f]"
-              >
-                <Plus className="h-4 w-4" /> Add space
-              </button>
+              {canCreate && (
+                <button
+                  type="button"
+                  onClick={() => openAddModal()}
+                  className="ml-auto inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#2F9E7A] px-4 text-sm font-semibold text-white transition hover:bg-[#2a8f6f]"
+                >
+                  <Plus className="h-4 w-4" /> Add space
+                </button>
+              )}
             </div>
 
             {/* Legend: count of each status */}
@@ -435,6 +444,8 @@ export default function StaffSpacesandServicesManagement() {
                       items={itemsFor(room)}
                       onEdit={handleEdit}
                       onAdd={openAddModal}
+                      canEdit={canEdit}
+                      canAdd={canCreate}
                     />
                   ))}
                 </div>
@@ -569,7 +580,7 @@ export default function StaffSpacesandServicesManagement() {
               </div>
 
               <div className="flex items-center justify-between border-t border-[#DCEBE3] px-6 py-4">
-                {modalMode === "edit" ? (
+                {modalMode === "edit" && canDelete ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -599,13 +610,15 @@ export default function StaffSpacesandServicesManagement() {
                   >
                     Cancel
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    className="rounded-lg bg-[#2F9E7A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2a8f6f]"
-                  >
-                    {modalMode === "edit" ? "Save Changes" : "Add Space"}
-                  </button>
+                  {(modalMode === "edit" ? canEdit : canCreate) && (
+                    <button
+                      type="button"
+                      onClick={handleSave}
+                      className="rounded-lg bg-[#2F9E7A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2a8f6f]"
+                    >
+                      {modalMode === "edit" ? "Save Changes" : "Add Space"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

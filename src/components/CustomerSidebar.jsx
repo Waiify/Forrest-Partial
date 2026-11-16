@@ -6,6 +6,7 @@ import {
   History,
   Bell,
   User,
+  ShieldCheck,
 } from "lucide-react";
 
 import { useEffect, useState } from "react";
@@ -62,6 +63,11 @@ const NAV_ITEMS = [
         id: "Profile",
         label: "Profile",
         icon: User,
+      },
+      {
+        id: "Activity Log",
+        label: "Activity Log",
+        icon: ShieldCheck,
       },
     ],
   },

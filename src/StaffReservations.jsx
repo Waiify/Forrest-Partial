@@ -6,6 +6,7 @@ import pageBackground from "./assets/page_background.jpeg";
 
 import StaffHeader from "./components/StaffHeader.jsx";
 import StaffSidebar from "./components/StaffSidebar.jsx";
+import { hasCurrentPermission } from "./permissionUtils.js";
 
 
 const API = "http://localhost:5000/api";
@@ -17,6 +18,7 @@ const ROUTES = {
   StaffSpacesandServicesAvailability: "/StaffSpacesandServicesAvailability",
   StaffReservation: "/StaffReservation",
   StaffReservationHistory: "/StaffReservationHistory",
+  StaffQRScanner: "/StaffQRScanner",
   StaffSystemLogs: "/StaffSystemLogs",
 };
 
@@ -26,6 +28,7 @@ const PAGE_TITLES = {
   StaffSpacesandServicesAvailability: "Spaces and Services Availability",
   StaffReservation: "Reservation",
   StaffReservationHistory: "Reservation History",
+  StaffQRScanner: "QR Scanner",
   StaffSystemLogs: "System Logs",
 };
 
@@ -611,6 +614,8 @@ export default function StaffReservation() {
   const [capsuleFilter, setCapsuleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
+  const canCreate = hasCurrentPermission("reservations", "create");
+  const canUpdate = hasCurrentPermission("reservations", "update");
 
   const requestSeq = useRef(0);
   const mounted = useRef(true);
@@ -939,13 +944,15 @@ export default function StaffReservation() {
                     />
                     Refresh
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowForm(true)}
-                    className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#2F9E7A] px-4 text-sm font-semibold text-white transition hover:bg-[#2a8f6f]"
-                  >
-                    <Plus className="h-4 w-4" /> New reservation
-                  </button>
+                  {canCreate && (
+                    <button
+                      type="button"
+                      onClick={() => setShowForm(true)}
+                      className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#2F9E7A] px-4 text-sm font-semibold text-white transition hover:bg-[#2a8f6f]"
+                    >
+                      <Plus className="h-4 w-4" /> New reservation
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1155,6 +1162,7 @@ export default function StaffReservation() {
                               </span>
                             </td>
                             <td className="px-4 py-4">
+                              {canUpdate ? (
                               <select
                                 aria-label={`Cash payment for ${reservation.guestName}`}
                                 className={`rounded-full border-0 px-2.5 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#2F9E7A]/30 disabled:opacity-60 ${
@@ -1173,11 +1181,14 @@ export default function StaffReservation() {
                                   <option key={s}>{s}</option>
                                 ))}
                               </select>
+                              ) : (
+                                <span className="text-xs text-slate-600">{payStatus}</span>
+                              )}
                             </td>
                             <td className="px-4 py-4">
                               <div className="flex items-center gap-1">
                                 {/* Edit: Pending ug Confirmed ra */}
-                                {canEdit && (
+                                {canUpdate && canEdit && (
                                   <button
                                     type="button"
                                     disabled={isBusy}
@@ -1188,25 +1199,24 @@ export default function StaffReservation() {
                                     Edit
                                   </button>
                                 )}
-                                {actions.length === 0 && !canEdit ? (
-                                  <span className="text-xs text-slate-400">
-                                    —
-                                  </span>
-                                ) : (
+                                {canUpdate && actions.length > 0 && (
                                   actions.map((action) => (
                                     <button
                                       key={action.label}
                                       type="button"
                                       disabled={isBusy}
-                                      onClick={() =>
-                                        askToUpdateStatus(reservation, action)
-                                      }
+                                      onClick={() => askToUpdateStatus(reservation, action)}
                                       className={`rounded px-2.5 py-1 text-[11px] font-medium disabled:opacity-60 ${action.className}`}
                                     >
                                       {action.label}
                                     </button>
                                   ))
                                 )}
+                                {(!canUpdate || (actions.length === 0 && !canEdit)) ? (
+                                  <span className="text-xs text-slate-400">
+                                    —
+                                  </span>
+                                ) : null}
                               </div>
                             </td>
                           </tr>

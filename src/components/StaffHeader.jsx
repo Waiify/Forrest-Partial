@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { signOut } from "firebase/auth";
 import { Bell, LogOut, Search, Settings, User } from "lucide-react";
 
-import { auth } from "../firebase"; // USBA ang path kung lahi ang location sa file
+import { getFirebaseAuth } from "../firebase"; // USBA ang path kung lahi ang location sa file
+import { recordLogout } from "../auditLogout.js";
 
 // USBA kung lahi ang route sa imong Login page sa main.jsx
 const LOGIN_ROUTE = "/";
@@ -122,8 +123,10 @@ export default function StaffHeader({
     setMenuOpen(false);
     setNotificationsOpen(false);
 
+    await recordLogout();
+
     try {
-      await signOut(auth);
+      await signOut(await getFirebaseAuth());
     } catch (error) {
       console.error("Firebase sign out error:", error);
     }

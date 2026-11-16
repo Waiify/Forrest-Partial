@@ -18,9 +18,7 @@ export const site = {
   social: { facebook: "https://facebook.com/", instagram: "https://instagram.com/" },
 
   hours: [
-    ["Monday to Friday", "7:00 AM to 10:00 PM"],
-    ["Saturday", "8:00 AM to 9:00 PM"],
-    ["Sunday", "9:00 AM to 6:00 PM"],
+    ["Monday to Sunday", "24/7"],
   ],
 };
 

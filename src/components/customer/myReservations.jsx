@@ -10,6 +10,7 @@ import {
 
 import Card from "./card.jsx";
 import StatusBadge from "./statusBadge.jsx";
+import ReservationQrCode from "./ReservationQrCode.jsx";
 import { CAPSULES } from "../../dashboardData.js";
 
 export default function MyReservations({
@@ -174,6 +175,10 @@ export default function MyReservations({
 
                   </div>
                 </div>
+
+                {reservation.status === "Confirmed" && (
+                  <ReservationQrCode reservation={reservation} />
+                )}
               </div>
             );
           })}

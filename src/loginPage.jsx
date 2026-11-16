@@ -4,7 +4,7 @@ import { signInWithPopup } from "firebase/auth";
 import ReCAPTCHA from "react-google-recaptcha";
 import { Eye, EyeOff, Mail, Lock, KeyRound } from "lucide-react";
 
-import { auth, googleProvider } from "./firebase";
+import { getFirebaseAuth, googleProvider } from "./firebase";
 import useSettings from "./useSettings2";
 import pageBackground from "./assets/page_background.jpeg"; // usba kung .jpg ang tinuod nimong file
 import logo from "./assets/logo.jpg";
@@ -154,7 +154,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(await getFirebaseAuth(), googleProvider);
       const idToken = await result.user.getIdToken();
 
       const res = await fetch(`${API_URL}/api/auth/google-sync`, {

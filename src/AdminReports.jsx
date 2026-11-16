@@ -7,6 +7,7 @@ import {
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
 import useSettings from "./useSettings2.js";
+import { hasCurrentPermission, readSessionUser } from "./permissionUtils.js";
 
 //strip a trailing slash and make sure the URL ends in /api
 const RAW_API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
@@ -24,26 +25,9 @@ const TYPE_STYLES = {
 const inputClass =
   "h-10 w-full rounded-lg border border-[#CFE3D9] bg-white px-3 text-sm text-[#0B3B2A] outline-none focus:border-[#2F9E7A] focus:ring-2 focus:ring-[#2F9E7A]/25";
 
-// The server checks that the person is a real admin using the logged-in user's id.
-// tries several common storage keys. If your login page uses another key, add it to this list.
-const USER_STORAGE_KEYS = ["user", "currentUser", "authUser", "adminUser", "admin", "forrestUser"];
-
 function adminHeaders() {
-  for (const store of [localStorage, sessionStorage]) {
-    for (const key of USER_STORAGE_KEYS) {
-      try {
-        const raw = store.getItem(key);
-        if (!raw) continue;
-        const parsed = JSON.parse(raw);
-        const user = parsed?.user || parsed; // some apps save { user: {...} }
-        const id = user?.id || user?._id;
-        if (id) return { "x-user-id": id };
-      } catch {
-        // not valid JSON, try the next key
-      }
-    }
-  }
-  return {};
+  const token = sessionStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 // FIX: a bare "Failed to fetch" now says what actually went wrong
@@ -175,6 +159,9 @@ export default function AdminReports() {
   const settings = useSettings();
   // FIX: only hidden when explicitly switched off (undefined/missing counts as ON)
   const pdfEnabled = settings?.pdfExportEnabled !== false;
+  const canExport = hasCurrentPermission("reports", "export");
+  const isAdmin = readSessionUser()?.role === "admin";
+  const driveJustConnected = new URLSearchParams(window.location.search).get("drive") === "connected";
 
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState({ payments: 0, refunds: 0, voids: 0, net: 0, count: 0 });
@@ -186,6 +173,8 @@ export default function AdminReports() {
   const [notice, setNotice] = useState("");
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [driveStatus, setDriveStatus] = useState(null);
+  const [driveBusy, setDriveBusy] = useState(false);
   const [selected, setSelected] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -196,13 +185,15 @@ export default function AdminReports() {
   const [type, setType] = useState("all");
   const [method, setMethod] = useState("all");
 
+  const driveEnabled = settings?.googleDriveEnabled !== false && driveStatus?.enabled !== false;
+
   function handleNavigate(section) {
     if (section === "Customers") return navigate("/customers");
     if (section === "Settings") return navigate("/settings");
     if (section === "Capsule") return navigate("/capsule");
     if (section === "Reservation") return navigate("/reservation");
     if (section === "Reports" || section === "transactions") return navigate("/reports");
-    if (section === "Staff Management" || section === "Management") return navigate("/management");
+    if (section === "User Management" || section === "Staff Management" || section === "Management") return navigate("/management");
     return navigate("/dashboard");
   }
 
@@ -259,6 +250,29 @@ export default function AdminReports() {
     };
   }, [filterQuery, page, reloadKey]);
 
+  useEffect(() => {
+    if (!canExport) return undefined;
+    let current = true;
+
+    const loadDriveStatus = async () => {
+      try {
+        const status = await readResponse(
+          await request(`${API}/drive/status`, { headers: adminHeaders() })
+        );
+        if (current) setDriveStatus(status);
+      } catch (err) {
+        if (!current) return;
+        setDriveStatus({ error: true, enabled: true, configured: false, connected: false });
+        setError(err.message || "Could not load Google Drive status.");
+      }
+    };
+
+    void loadDriveStatus();
+    return () => {
+      current = false;
+    };
+  }, [canExport]);
+
   const resetFilters = useCallback(() => {
     setSearch("");
     setFrom("");
@@ -275,6 +289,20 @@ export default function AdminReports() {
 
   const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
 
+  async function connectDrive() {
+    setDriveBusy(true);
+    setError("");
+    try {
+      const result = await readResponse(
+        await request(`${API}/drive/authorize`, { headers: adminHeaders() })
+      );
+      window.location.assign(result.authorizationUrl);
+    } catch (err) {
+      setError(err.message || "Could not connect Google Drive.");
+      setDriveBusy(false);
+    }
+  }
+
   async function exportPdf() {
     setExporting(true);
     setError("");
@@ -282,6 +310,7 @@ export default function AdminReports() {
     try {
       const response = await request(`${API}/reports/export?${filterQuery}`, { headers: adminHeaders() });
       if (!response.ok) await readResponse(response); // throws with the server's message
+      const driveUploadStatus = response.headers.get("X-Drive-Upload-Status");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -291,7 +320,17 @@ export default function AdminReports() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      setNotice("PDF downloaded.");
+      if (driveUploadStatus === "uploaded") {
+        setNotice("PDF downloaded and saved to Google Drive.");
+      } else if (driveUploadStatus === "failed") {
+        setNotice("PDF downloaded, but Google Drive could not save a copy.");
+      } else if (driveUploadStatus === "not-connected") {
+        setNotice("PDF downloaded. Google Drive is not connected; ask an admin to connect it.");
+      } else if (driveUploadStatus === "disabled") {
+        setNotice("PDF downloaded. Google Drive is turned off in Settings.");
+      } else {
+        setNotice("PDF downloaded.");
+      }
     } catch (err) {
       setError(err.message || "Could not export the PDF.");
     } finally {
@@ -339,19 +378,50 @@ export default function AdminReports() {
                   Every payment, refund, and void, with the full details. Filter the list, then export it as a PDF.
                 </p>
               </div>
-              {pdfEnabled ? (
-                <button
-                  type="button"
-                  onClick={exportPdf}
-                  disabled={exporting || loading || total === 0}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#2F9E7A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2a8f6f] focus-visible:ring-2 focus-visible:ring-[#0B3B2A] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Download className="h-4 w-4" />
-                  {exporting ? "Preparing PDF..." : "Export PDF"}
-                </button>
-              ) : (
-                <p className="text-sm text-[#6F8E7F]">PDF export is disabled in Settings.</p>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {canExport && driveStatus && (
+                  <span className="text-xs text-[#6F8E7F]">
+                    {!driveEnabled
+                      ? "Google Drive is turned off in Settings"
+                      : driveStatus.error
+                      ? "Google Drive status unavailable"
+                      : driveStatus.connected
+                        ? "Google Drive connected"
+                        : driveStatus.configured
+                          ? "Google Drive not connected"
+                          : "Google Drive needs server configuration"}
+                  </span>
+                )}
+                {canExport && isAdmin && driveEnabled && (
+                  <button
+                    type="button"
+                    onClick={connectDrive}
+                    disabled={driveBusy || driveStatus === null}
+                    className="rounded-lg border border-[#CFE3D9] px-3 py-2.5 text-sm font-semibold text-[#315D49] hover:bg-[#F3F9F5] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {driveBusy
+                      ? "Connecting..."
+                      : driveStatus?.connected
+                        ? "Reconnect Google Drive"
+                        : "Connect Google Drive"}
+                  </button>
+                )}
+                {pdfEnabled && canExport ? (
+                  <button
+                    type="button"
+                    onClick={exportPdf}
+                    disabled={exporting || loading || total === 0}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#2F9E7A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2a8f6f] focus-visible:ring-2 focus-visible:ring-[#0B3B2A] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Download className="h-4 w-4" />
+                    {exporting ? "Preparing PDF..." : "Export PDF"}
+                  </button>
+                ) : (
+                  <p className="text-sm text-[#6F8E7F]">
+                    {!canExport ? "You do not have permission to export reports." : "PDF export is disabled in Settings."}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -483,15 +553,27 @@ export default function AdminReports() {
                 </div>
               )}
 
-              {notice && !error && (
+              {(notice || driveJustConnected) && !error && (
                 <div
                   className="flex items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50 px-5 py-3 text-sm text-emerald-700 sm:px-6"
                   role="status"
                 >
-                  <span>{notice}</span>
+                  <span>{notice || "Google Drive is connected."}</span>
                   <button
                     type="button"
-                    onClick={() => setNotice("")}
+                    onClick={() => {
+                      setNotice("");
+                      if (driveJustConnected) {
+                        const params = new URLSearchParams(window.location.search);
+                        params.delete("drive");
+                        const query = params.toString();
+                        window.history.replaceState(
+                          window.history.state,
+                          "",
+                          `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`
+                        );
+                      }
+                    }}
                     aria-label="Dismiss"
                     className="rounded p-0.5 hover:bg-emerald-100"
                   >
@@ -541,7 +623,7 @@ export default function AdminReports() {
                               ? "Try changing or clearing the selected filters."
                               : "New transactions appear when a reservation's payment is marked Paid or Refunded."}
                           </p>
-                          {!hasFilters && (
+                          {!hasFilters && isAdmin && (
                             <button
                               type="button"
                               onClick={importExisting}
