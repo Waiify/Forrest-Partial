@@ -294,24 +294,6 @@ function FAQ() {
   );
 }
 
-function Contact() {
-  return (
-    <section id="contact" className="mx-auto max-w-6xl px-5 pb-20 md:pb-28">
-      <div className="flex flex-wrap items-center justify-between gap-8 rounded-[2.5rem] bg-canopy p-10 text-mist md:p-14">
-        <div className="max-w-xl">
-          <h2 className="font-display text-3xl font-semibold md:text-4xl">Ready for a distraction-free session?</h2>
-          <p className="mt-3 text-lg text-sage">Create your account and reserve a capsule today.</p>
-        </div>
-        <div className="flex flex-wrap gap-4">
-          <Link to="/CustomerSignUp" className={btnLight}>Sign up free</Link>
-          <a href={`tel:${site.phone.replace(/\s/g, "")}`} className={btnOutline}>Call {site.phone}</a>
-          <a href={`mailto:${site.email}`} className={btnOutline}>Email us</a>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function Footer() {
   return (
     <footer className="border-t border-sage/60">
@@ -344,7 +326,6 @@ export default function LandingPage() {
         <Rates />
         <Location mapsEnabled={settings.googleMapsEnabled} settingsLoaded={settings.settingsLoaded} />
         <FAQ />
-        <Contact />
       </main>
       <Footer />
     </div>
