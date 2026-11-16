@@ -1,3 +1,4 @@
+
 import {
   Bell,
   CheckCircle2,
@@ -9,57 +10,84 @@ import {
 export default function Notification({
   notifications = [],
 }) {
+  const getNotificationType = (notification) => {
+    const type = notification.type?.toLowerCase();
+    const status = notification.status?.toLowerCase();
+    const title = notification.title?.toLowerCase();
+
+    if (type === "confirmed" || status === "confirmed") {
+      return "confirmed";
+    }
+
+    if (type === "cancelled" || status === "cancelled") {
+      return "cancelled";
+    }
+
+    if (type === "rescheduled" || title?.includes("rescheduled")) {
+      return "rescheduled";
+    }
+
+    if (
+      type === "pending" ||
+      status === "pending" ||
+      title?.includes("submitted")
+    ) {
+      return "pending";
+    }
+
+    return "default";
+  };
+
   const getNotificationIcon = (notification) => {
-    if (notification.type === "confirmed") {
-      return CheckCircle2;
-    }
+    const type = getNotificationType(notification);
 
-    if (notification.type === "cancelled") {
-      return XCircle;
-    }
-
-    if (notification.type === "rescheduled") {
-      return CalendarClock;
-    }
+    if (type === "confirmed") return CheckCircle2;
+    if (type === "cancelled") return XCircle;
+    if (type === "rescheduled") return CalendarClock;
 
     return Clock3;
   };
 
   const getNotificationIconStyle = (notification) => {
-    if (notification.type === "confirmed") {
-      return "bg-green-100 text-green-600";
-    }
+    const type = getNotificationType(notification);
 
-    if (notification.type === "cancelled") {
-      return "bg-red-100 text-red-600";
-    }
+    const styles = {
+      confirmed: "bg-green-100 text-green-600",
+      pending: "bg-blue-100 text-blue-600",
+      cancelled: "bg-red-100 text-red-600",
+      rescheduled: "bg-blue-100 text-blue-600",
+      default: "bg-[#E8F3ED] text-[#2F9E7A]",
+    };
 
-    if (notification.type === "rescheduled") {
-      return "bg-blue-100 text-blue-600";
-    }
+    return styles[type];
+  };
 
-    return "bg-[#E8F3ED] text-[#2F9E7A]";
+  const getStatusStyle = (notification) => {
+    const type = getNotificationType(notification);
+
+    const styles = {
+      confirmed: "bg-green-100 text-green-700",
+      pending: "bg-blue-100 text-blue-700",
+      cancelled: "bg-red-100 text-red-700",
+      rescheduled: "bg-blue-100 text-blue-700",
+      default: "bg-yellow-100 text-yellow-700",
+    };
+
+    return styles[type];
   };
 
   return (
     <div className="space-y-6">
-
-      {/* Header gud unsa pa */}
       <div>
-       
-
         <p className="mt-1 text-sm text-[#6F8E7F]">
           Stay updated with your reservation status and
           account activities.
         </p>
       </div>
 
-      {/* Notifications List like new something*/}
       <div className="rounded-2xl border border-[#CFE3D9] bg-white shadow-sm">
-
         {notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#E8F3ED]">
               <Bell className="h-7 w-7 text-[#2F9E7A]" />
             </div>
@@ -72,15 +100,11 @@ export default function Notification({
               You will receive notifications here when
               there are updates regarding your reservations.
             </p>
-
           </div>
         ) : (
           <div className="divide-y divide-[#E2EEE8]">
-
             {notifications.map((notification) => {
-              const Icon = getNotificationIcon(
-                notification
-              );
+              const Icon = getNotificationIcon(notification);
 
               return (
                 <div
@@ -91,8 +115,7 @@ export default function Notification({
                       : "bg-white"
                   }`}
                 >
-
-                  {/* Icon */}
+                  {/* Notification Icon */}
                   <div
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${getNotificationIconStyle(
                       notification
@@ -101,24 +124,26 @@ export default function Notification({
                     <Icon className="h-5 w-5" />
                   </div>
 
-                  {/* Content nimo*/}
+                  {/* Notification Content */}
                   <div className="min-w-0 flex-1">
-
                     <div className="flex items-start justify-between gap-3">
-
                       <div>
                         <h3 className="text-sm font-semibold text-[#0B4A2E]">
                           {notification.title}
                         </h3>
 
                         {notification.status && (
-                        <span className="mt-1 inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-1 text-[10px] font-semibold text-yellow-700">
+                          <span
+                            className={`mt-1 inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold ${getStatusStyle(
+                              notification
+                            )}`}
+                          >
                             Status: {notification.status}
-                        </span>
+                          </span>
                         )}
 
                         {!notification.read && (
-                          <span className="mt-1 inline-block rounded-full bg-[#2F9E7A] px-2 py-0.5 text-[10px] font-semibold text-white">
+                          <span className="ml-1 mt-1 inline-block rounded-full bg-[#2F9E7A] px-2 py-0.5 text-[10px] font-semibold text-white">
                             NEW
                           </span>
                         )}
@@ -129,22 +154,17 @@ export default function Notification({
                           {notification.timestamp}
                         </span>
                       )}
-
                     </div>
 
                     <p className="mt-2 text-sm leading-6 text-[#536F62]">
                       {notification.message}
                     </p>
-
                   </div>
-
                 </div>
               );
             })}
-
           </div>
         )}
-
       </div>
     </div>
   );

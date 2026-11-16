@@ -6,7 +6,6 @@ import pageBackground from "./assets/page_background.jpeg";
 
 import StaffHeader from "./components/StaffHeader.jsx";
 import StaffSidebar from "./components/StaffSidebar.jsx";
-import { hasCurrentPermission } from "./permissionUtils.js";
 
 
 const API = "http://localhost:5000/api";
@@ -18,7 +17,6 @@ const ROUTES = {
   StaffSpacesandServicesAvailability: "/StaffSpacesandServicesAvailability",
   StaffReservation: "/StaffReservation",
   StaffReservationHistory: "/StaffReservationHistory",
-  StaffQRScanner: "/StaffQRScanner",
   StaffSystemLogs: "/StaffSystemLogs",
 };
 
@@ -28,15 +26,18 @@ const PAGE_TITLES = {
   StaffSpacesandServicesAvailability: "Spaces and Services Availability",
   StaffReservation: "Reservation",
   StaffReservationHistory: "Reservation History",
-  StaffQRScanner: "QR Scanner",
   StaffSystemLogs: "System Logs",
 };
 
-const STATUSES = ["Pending", "Confirmed", "Checked in", "Completed", "Cancelled"];
 const ACTIVE_STATUSES = new Set(["Pending", "Confirmed", "Checked in"]);
+// Mga status nga naa na sa Reservation History, busa dili na ipakita dinhi
+// (Completed, Cancelled, Rejected/Declined wala sa ACTIVE_STATUSES).
+// Kini ra ang makita sa status filter dropdown.
+const FILTER_STATUSES = ["Pending", "Confirmed", "Checked in"];
 const PAYMENT_STATUSES = ["Unpaid", "Paid"];
-const BOOKABLE_CAPSULE_STATUSES = new Set(["Available", "Reserved"]);
-// Reservations nga pwede pa i-edit (capsule, petsa, oras, duration)
+// Services (any room) nga pwede pa i-book
+const BOOKABLE_STATUSES = new Set(["Available", "Reserved"]);
+// Reservations nga pwede pa i-edit (service, petsa, oras, duration)
 const EDITABLE_STATUSES = new Set(["Pending", "Confirmed"]);
 
 const STATUS_STYLES = {
@@ -177,6 +178,22 @@ function customerName(user) {
   );
 }
 
+// Kung kanus-a gi-create ang reservation (fallback: timestamp sa Mongo _id)
+function createdTime(reservation) {
+  const created = Date.parse(reservation.createdAt);
+  if (Number.isFinite(created)) return created;
+  const fromId = parseInt(String(reservation._id || "").slice(0, 8), 16);
+  return Number.isFinite(fromId) ? fromId * 1000 : 0;
+}
+
+// Reservation nga dapat makita sa page: active ra, ug dili pa milabay.
+// Ang "Checked in" kanunay makita aron ma-complete pa sa staff.
+function isCurrentReservation(reservation, now = Date.now()) {
+  if (!ACTIVE_STATUSES.has(reservation.status)) return false;
+  if (reservation.status === "Checked in") return true;
+  return new Date(reservation.endAt).getTime() >= now;
+}
+
 
 function StatCard({ label, value, detail, tint }) {
   return (
@@ -193,7 +210,7 @@ function StatCard({ label, value, detail, tint }) {
 }
 
 /* Overlay that asks staff to double check before a status change is applied */
-function ConfirmModal({ reservation, action, capsuleName, busy, error, onCancel, onConfirm }) {
+function ConfirmModal({ reservation, action, serviceName, busy, error, onCancel, onConfirm }) {
   // Close with Escape (unless a request is in progress).
   useEffect(() => {
     const onKey = (event) => event.key === "Escape" && !busy && onCancel();
@@ -206,7 +223,7 @@ function ConfirmModal({ reservation, action, capsuleName, busy, error, onCancel,
 
   const details = [
     ["Customer", reservation.guestName || "—"],
-    ["Capsule", capsuleName],
+    ["Service", serviceName],
     [
       "Date & time",
       `${formatDate(reservation.startAt)} · ${formatTime(reservation.startAt)} – ${formatTime(
@@ -299,8 +316,11 @@ function ConfirmModal({ reservation, action, capsuleName, busy, error, onCancel,
   Gamiton para sa pag-create UG pag-edit sa reservation.
   - Kung naay `reservation` prop = edit mode (dili ma-usab ang customer)
   - Ang mga milabay nga petsa/oras dili pwede pilion
+  - Sa bag-ong reservation, pwede pili og existing customer o i-type ang
+    ngalan sa walk-in customer
+  - Ang services gi-group sumala sa room (Study Room, Capsule Pods, ...)
 */
-function ReservationModal({ reservation, customers, capsules, onClose, onSave, saving }) {
+function ReservationModal({ reservation, customers, services, onClose, onSave, saving }) {
   const isEdit = Boolean(reservation);
 
   // Ang orihinal nga start time (para mahibaw-an kung gi-usab ba)
@@ -316,7 +336,9 @@ function ReservationModal({ reservation, customers, capsules, onClose, onSave, s
           status: reservation.status,
         }
       : {
-          customerId: "",
+          customerQuery: "", // ngalan nga gi-type (o ngalan sa napili nga customer)
+          customerId: "", // naay value kung existing customer ang napili
+          guestEmail: "",
           capsuleId: "",
           startAt: "",
           durationHours: "1",
@@ -324,6 +346,7 @@ function ReservationModal({ reservation, customers, capsules, onClose, onSave, s
         }
   );
   const [error, setError] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Close with Escape.
   useEffect(() => {
@@ -335,11 +358,44 @@ function ReservationModal({ reservation, customers, capsules, onClose, onSave, s
   const update = (key, value) =>
     setForm((current) => ({ ...current, [key]: value }));
 
-  const selectedCapsule = capsules.find((c) => c.capsuleId === form.capsuleId);
+  // Mga customer nga motakdo sa gi-type (walay type = unang 8)
+  const matches = useMemo(() => {
+    if (form.customerId) return [];
+    const q = form.customerQuery.trim().toLowerCase();
+    return customers
+      .filter((c) =>
+        `${customerName(c)} ${c.email || ""}`.toLowerCase().includes(q)
+      )
+      .slice(0, 8);
+  }, [customers, form.customerQuery, form.customerId]);
+
+  function selectCustomer(customer) {
+    setForm((current) => ({
+      ...current,
+      customerId: customer._id,
+      customerQuery: customerName(customer),
+    }));
+    setShowSuggestions(false);
+  }
+
+  const selectedCustomer = customers.find((c) => c._id === form.customerId);
+
+  // Services gi-group sumala sa room
+  const serviceGroups = useMemo(() => {
+    const groups = new Map();
+    services.forEach((service) => {
+      const room = service.room || "Other";
+      if (!groups.has(room)) groups.set(room, []);
+      groups.get(room).push(service);
+    });
+    return [...groups.entries()];
+  }, [services]);
+
+  const selectedService = services.find((s) => s.capsuleId === form.capsuleId);
   const hours = Number(form.durationHours);
   const estimate =
-    selectedCapsule && Number.isFinite(hours)
-      ? Number(selectedCapsule.pricePerHour) * hours
+    selectedService && Number.isFinite(hours)
+      ? Number(selectedService.pricePerHour) * hours
       : null;
 
   // Pinakaagi nga pwede pilion: karon nga minuto
@@ -350,12 +406,12 @@ function ReservationModal({ reservation, customers, capsules, onClose, onSave, s
     if (saving) return;
     setError("");
 
-    if ((!isEdit && !form.customerId) || !form.capsuleId || !form.startAt) {
-      setError(
-        isEdit
-          ? "Choose a capsule and start time."
-          : "Choose a customer, capsule, and start time."
-      );
+    if (!isEdit && !form.customerId && !form.customerQuery.trim()) {
+      setError("Enter the customer's name or pick an existing customer.");
+      return;
+    }
+    if (!form.capsuleId || !form.startAt) {
+      setError("Choose a service and start time.");
       return;
     }
     if (!Number.isFinite(hours) || hours < 0.5 || hours > 24) {
@@ -384,7 +440,12 @@ function ReservationModal({ reservation, customers, capsules, onClose, onSave, s
               durationHours: hours,
             }
           : {
-              customerId: form.customerId,
+              ...(form.customerId
+                ? { customerId: form.customerId }
+                : {
+                    guestName: form.customerQuery.trim(),
+                    guestEmail: form.guestEmail.trim() || undefined,
+                  }),
               capsuleId: form.capsuleId,
               startAt: start.toISOString(),
               durationHours: hours,
@@ -397,7 +458,7 @@ function ReservationModal({ reservation, customers, capsules, onClose, onSave, s
     }
   }
 
-  const noOptions = capsules.length === 0 || (!isEdit && customers.length === 0);
+  const noOptions = services.length === 0;
 
   return (
     <div
@@ -422,8 +483,8 @@ function ReservationModal({ reservation, customers, capsules, onClose, onSave, s
             </h2>
             <p className="mt-1 text-sm text-[#5F7F70]">
               {isEdit
-                ? "Change the capsule, date, time, or duration."
-                : "Create a booking for an existing customer."}
+                ? "Change the service, date, time, or duration."
+                : "Type the customer's name, or pick an existing customer from the list."}
             </p>
           </div>
           <button
@@ -437,7 +498,7 @@ function ReservationModal({ reservation, customers, capsules, onClose, onSave, s
         </div>
 
         <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
-          {/* Customer: pilion kung bag-o, read-only kung edit */}
+          {/* Customer: read-only kung edit; kung bag-o, pili o i-type ang ngalan */}
           {isEdit ? (
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
@@ -451,43 +512,103 @@ function ReservationModal({ reservation, customers, capsules, onClose, onSave, s
               />
             </label>
           ) : (
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
-                Customer
-              </span>
-              <select
-                className={inputClass}
-                value={form.customerId}
-                onChange={(e) => update("customerId", e.target.value)}
-              >
-                <option value="">Select a customer</option>
-                {customers.map((customer) => (
-                  <option key={customer._id} value={customer._id}>
-                    {customerName(customer)}
-                    {customer.email && customerName(customer) !== customer.email
-                      ? ` · ${customer.email}`
-                      : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="sm:col-span-2">
+              <div className="relative">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
+                    Customer name
+                  </span>
+                  <input
+                    className={inputClass}
+                    type="text"
+                    autoComplete="off"
+                    placeholder="Type a name or search existing customers"
+                    value={form.customerQuery}
+                    onChange={(e) => {
+                      // Kung gi-usab ang gi-type, dili na existing customer ang napili
+                      setForm((current) => ({
+                        ...current,
+                        customerQuery: e.target.value,
+                        customerId: "",
+                      }));
+                      setShowSuggestions(true);
+                    }}
+                    onFocus={() => setShowSuggestions(true)}
+                    onBlur={() => setShowSuggestions(false)}
+                  />
+                </label>
+
+                {showSuggestions && matches.length > 0 && (
+                  <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-[#CFE3D9] bg-white py-1 text-sm shadow-lg">
+                    {matches.map((customer) => (
+                      <li key={customer._id}>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => selectCustomer(customer)}
+                          className="flex w-full flex-col px-3 py-2 text-left hover:bg-[#EAF4EE]"
+                        >
+                          <span className="font-medium text-[#0B3B2A]">
+                            {customerName(customer)}
+                          </span>
+                          {customer.email &&
+                            customerName(customer) !== customer.email && (
+                              <span className="text-xs text-[#6F8E7F]">
+                                {customer.email}
+                              </span>
+                            )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {selectedCustomer ? (
+                <p className="mt-1.5 text-xs text-[#2F8060]">
+                  Existing customer
+                  {selectedCustomer.email ? ` · ${selectedCustomer.email}` : ""}
+                </p>
+              ) : (
+                form.customerQuery.trim() && (
+                  <div className="mt-2 grid gap-1.5">
+                    <p className="text-xs text-[#6F8E7F]">
+                      New walk-in customer. Pick a name from the list to use an
+                      existing account instead.
+                    </p>
+                    <input
+                      className={inputClass}
+                      type="email"
+                      placeholder="Email (optional)"
+                      aria-label="Customer email (optional)"
+                      value={form.guestEmail}
+                      onChange={(e) => update("guestEmail", e.target.value)}
+                    />
+                  </div>
+                )
+              )}
+            </div>
           )}
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-[#0B3B2A]">
-              Capsule
+              Service
             </span>
             <select
               className={inputClass}
               value={form.capsuleId}
               onChange={(e) => update("capsuleId", e.target.value)}
             >
-              <option value="">Select a capsule</option>
-              {capsules.map((capsule) => (
-                <option key={capsule.capsuleId} value={capsule.capsuleId}>
-                  {capsule.capsuleName} · {formatCurrency(capsule.pricePerHour)}
-                  /hr
-                </option>
+              <option value="">Select a service</option>
+              {serviceGroups.map(([room, items]) => (
+                <optgroup key={room} label={room}>
+                  {items.map((service) => (
+                    <option key={service.capsuleId} value={service.capsuleId}>
+                      {service.capsuleName} · {formatCurrency(service.pricePerHour)}
+                      /hr
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </label>
@@ -550,9 +671,7 @@ function ReservationModal({ reservation, customers, capsules, onClose, onSave, s
 
           {noOptions && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700 sm:col-span-2">
-              {!isEdit && customers.length === 0
-                ? "No customers found. A customer must have an account before you can book for them."
-                : "No capsules are available to book right now."}
+              No services are available to book right now.
             </p>
           )}
 
@@ -594,7 +713,8 @@ export default function StaffReservation() {
 
   const [reservations, setReservations] = useState([]);
   const [customers, setCustomers] = useState([]);
-  const [capsules, setCapsules] = useState([]);
+  // Services gikan sa tanang rooms (Study Room, Capsule Pods, VIP Room, ...)
+  const [services, setServices] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -611,11 +731,9 @@ export default function StaffReservation() {
   const [pendingError, setPendingError] = useState("");
 
   const [dateFilter, setDateFilter] = useState("");
-  const [capsuleFilter, setCapsuleFilter] = useState("all");
+  const [serviceFilter, setServiceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
-  const canCreate = hasCurrentPermission("reservations", "create");
-  const canUpdate = hasCurrentPermission("reservations", "update");
 
   const requestSeq = useRef(0);
   const mounted = useRef(true);
@@ -646,9 +764,10 @@ export default function StaffReservation() {
   }, []);
 
   const loadOptions = useCallback(async () => {
-    const [usersResult, capsulesResult] = await Promise.allSettled([
+    const [usersResult, servicesResult] = await Promise.allSettled([
       request("/users"),
-      request("/capsules?archived=false"),
+      // scope=all = services sa tanang rooms, matag usa naay "room"
+      request("/capsules?archived=false&scope=all"),
     ]);
     if (!mounted.current) return;
 
@@ -665,10 +784,10 @@ export default function StaffReservation() {
       problems.push("customers");
     }
 
-    if (capsulesResult.status === "fulfilled") {
-      setCapsules(asArray(capsulesResult.value));
+    if (servicesResult.status === "fulfilled") {
+      setServices(asArray(servicesResult.value));
     } else {
-      problems.push("capsules");
+      problems.push("services");
     }
 
     setOptionsError(
@@ -698,42 +817,55 @@ export default function StaffReservation() {
   }, [loadReservations, loadOptions]);
 
 
-  const capsuleNames = useMemo(
-    () => new Map(capsules.map((c) => [c.capsuleId, c.capsuleName])),
-    [capsules]
+  const serviceNames = useMemo(
+    () => new Map(services.map((s) => [s.capsuleId, s.capsuleName])),
+    [services]
   );
 
-  const bookableCapsules = useMemo(
-    () => capsules.filter((c) => BOOKABLE_CAPSULE_STATUSES.has(c.status)),
-    [capsules]
+  const bookableServices = useMemo(
+    () => services.filter((s) => BOOKABLE_STATUSES.has(s.status)),
+    [services]
   );
 
-  // Sa edit: bookable capsules + ang kasamtangang capsule sa reservation
-  const editableCapsules = useMemo(() => {
-    if (!editing) return bookableCapsules;
-    return capsules.filter(
-      (c) =>
-        BOOKABLE_CAPSULE_STATUSES.has(c.status) || c.capsuleId === editing.capsuleId
+  // Sa edit: bookable services + ang kasamtangang service sa reservation
+  const editableServices = useMemo(() => {
+    if (!editing) return bookableServices;
+    return services.filter(
+      (s) => BOOKABLE_STATUSES.has(s.status) || s.capsuleId === editing.capsuleId
     );
-  }, [capsules, bookableCapsules, editing]);
+  }, [services, bookableServices, editing]);
+
+  // Gihimo nga base sa tanan: wala ang completed/cancelled/rejected ug milabay na
+  const visibleReservations = useMemo(() => {
+    const now = Date.now();
+    return reservations.filter((r) => isCurrentReservation(r, now));
+  }, [reservations]);
 
 
-  const capsuleFilterOptions = useMemo(() => {
-    const options = new Map(capsuleNames);
-    reservations.forEach((r) => {
-      if (r.capsuleId && !options.has(r.capsuleId))
-        options.set(r.capsuleId, r.capsuleId);
-    });
-    return [...options.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [capsuleNames, reservations]);
+  // capsuleId -> room type (Study Room, Capsule Pods, ...)
+  const serviceRooms = useMemo(
+    () => new Map(services.map((s) => [s.capsuleId, s.room || "Other"])),
+    [services]
+  );
+
+  // Service dropdown: room types lang ang ipakita (dili ang matag service)
+  const roomOptions = useMemo(() => {
+    const rooms = [...new Set(services.map((s) => s.room).filter(Boolean))];
+    // Bookings nga ang service wala na sa listahan
+    const hasOther = visibleReservations.some((r) => !serviceRooms.has(r.capsuleId));
+    return hasOther ? [...rooms, "Other"] : rooms;
+  }, [services, visibleReservations, serviceRooms]);
 
   const filteredReservations = useMemo(
     () =>
-      reservations
+      visibleReservations
         .filter((r) => {
           if (dateFilter && toLocalDateValue(r.startAt) !== dateFilter)
             return false;
-          if (capsuleFilter !== "all" && r.capsuleId !== capsuleFilter)
+          if (
+            serviceFilter !== "all" &&
+            (serviceRooms.get(r.capsuleId) || "Other") !== serviceFilter
+          )
             return false;
           if (statusFilter !== "all" && r.status !== statusFilter) return false;
           if (
@@ -743,32 +875,36 @@ export default function StaffReservation() {
             return false;
           return true;
         })
-        .sort((a, b) => new Date(a.startAt) - new Date(b.startAt)),
-    [reservations, dateFilter, capsuleFilter, statusFilter, paymentFilter]
+        // Pinakabag-o nga gi-create una; kung parehas, mas dali ang start time
+        .sort(
+          (a, b) =>
+            createdTime(b) - createdTime(a) ||
+            new Date(a.startAt) - new Date(b.startAt)
+        ),
+    [visibleReservations, dateFilter, serviceFilter, serviceRooms, statusFilter, paymentFilter]
   );
 
   const stats = useMemo(() => {
-    const nonCancelled = reservations.filter((r) => r.status !== "Cancelled");
-    const paid = nonCancelled.filter((r) => r.paymentStatus === "Paid");
+    const paid = visibleReservations.filter((r) => r.paymentStatus === "Paid");
     return {
-      total: reservations.length,
-      pending: reservations.filter((r) => r.status === "Pending").length,
-      active: reservations.filter((r) => ACTIVE_STATUSES.has(r.status)).length,
+      total: visibleReservations.length,
+      pending: visibleReservations.filter((r) => r.status === "Pending").length,
+      active: visibleReservations.length,
       paidCount: paid.length,
-      nonCancelledCount: nonCancelled.length,
+      nonCancelledCount: visibleReservations.length,
       collected: paid.reduce((sum, r) => sum + (Number(r.totalPrice) || 0), 0),
     };
-  }, [reservations]);
+  }, [visibleReservations]);
 
   const hasFilters =
     dateFilter ||
-    capsuleFilter !== "all" ||
+    serviceFilter !== "all" ||
     statusFilter !== "all" ||
     paymentFilter !== "all";
 
   function clearFilters() {
     setDateFilter("");
-    setCapsuleFilter("all");
+    setServiceFilter("all");
     setStatusFilter("all");
     setPaymentFilter("all");
   }
@@ -791,7 +927,7 @@ export default function StaffReservation() {
     }
   }
 
-  // I-save ang mga giusab sa reservation (capsule, petsa/oras, duration)
+  // I-save ang mga giusab sa reservation (service, petsa/oras, duration)
   async function updateReservation(data) {
     if (!editing) return;
     setSaving(true);
@@ -944,15 +1080,13 @@ export default function StaffReservation() {
                     />
                     Refresh
                   </button>
-                  {canCreate && (
-                    <button
-                      type="button"
-                      onClick={() => setShowForm(true)}
-                      className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#2F9E7A] px-4 text-sm font-semibold text-white transition hover:bg-[#2a8f6f]"
-                    >
-                      <Plus className="h-4 w-4" /> New reservation
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowForm(true)}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#2F9E7A] px-4 text-sm font-semibold text-white transition hover:bg-[#2a8f6f]"
+                  >
+                    <Plus className="h-4 w-4" /> New reservation
+                  </button>
                 </div>
               </div>
 
@@ -977,17 +1111,17 @@ export default function StaffReservation() {
                 </button>
                 <label className="block min-w-36 flex-1 sm:max-w-48">
                   <span className="mb-1.5 block text-xs font-semibold text-[#5F7F70]">
-                    Capsule
+                    Service
                   </span>
                   <select
                     className={inputClass}
-                    value={capsuleFilter}
-                    onChange={(e) => setCapsuleFilter(e.target.value)}
+                    value={serviceFilter}
+                    onChange={(e) => setServiceFilter(e.target.value)}
                   >
-                    <option value="all">All capsules</option>
-                    {capsuleFilterOptions.map(([id, name]) => (
-                      <option key={id} value={id}>
-                        {name}
+                    <option value="all">All services</option>
+                    {roomOptions.map((room) => (
+                      <option key={room} value={room}>
+                        {room}
                       </option>
                     ))}
                   </select>
@@ -1002,7 +1136,7 @@ export default function StaffReservation() {
                     onChange={(e) => setStatusFilter(e.target.value)}
                   >
                     <option value="all">All statuses</option>
-                    {STATUSES.map((status) => (
+                    {FILTER_STATUSES.map((status) => (
                       <option key={status}>{status}</option>
                     ))}
                   </select>
@@ -1060,7 +1194,7 @@ export default function StaffReservation() {
                     <tr className="bg-[#34a37c] text-[10px] font-semibold uppercase tracking-wide text-white">
                       {[
                         "Customer",
-                        "Capsule",
+                        "Service",
                         "Date & time",
                         "Duration",
                         "Amount",
@@ -1104,8 +1238,8 @@ export default function StaffReservation() {
                             No reservations found
                           </p>
                           <p className="mt-1 text-sm text-slate-400">
-                            {reservations.length === 0
-                              ? "Create a reservation to get started."
+                            {visibleReservations.length === 0
+                              ? "No current reservations. Create one to get started."
                               : "Try changing or clearing the selected filters."}
                           </p>
                         </td>
@@ -1132,7 +1266,7 @@ export default function StaffReservation() {
                               </p>
                             </td>
                             <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-slate-700">
-                              {capsuleNames.get(reservation.capsuleId) ||
+                              {serviceNames.get(reservation.capsuleId) ||
                                 reservation.capsuleName ||
                                 reservation.capsuleId}
                             </td>
@@ -1162,7 +1296,6 @@ export default function StaffReservation() {
                               </span>
                             </td>
                             <td className="px-4 py-4">
-                              {canUpdate ? (
                               <select
                                 aria-label={`Cash payment for ${reservation.guestName}`}
                                 className={`rounded-full border-0 px-2.5 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#2F9E7A]/30 disabled:opacity-60 ${
@@ -1181,14 +1314,11 @@ export default function StaffReservation() {
                                   <option key={s}>{s}</option>
                                 ))}
                               </select>
-                              ) : (
-                                <span className="text-xs text-slate-600">{payStatus}</span>
-                              )}
                             </td>
                             <td className="px-4 py-4">
                               <div className="flex items-center gap-1">
                                 {/* Edit: Pending ug Confirmed ra */}
-                                {canUpdate && canEdit && (
+                                {canEdit && (
                                   <button
                                     type="button"
                                     disabled={isBusy}
@@ -1199,24 +1329,25 @@ export default function StaffReservation() {
                                     Edit
                                   </button>
                                 )}
-                                {canUpdate && actions.length > 0 && (
+                                {actions.length === 0 && !canEdit ? (
+                                  <span className="text-xs text-slate-400">
+                                    —
+                                  </span>
+                                ) : (
                                   actions.map((action) => (
                                     <button
                                       key={action.label}
                                       type="button"
                                       disabled={isBusy}
-                                      onClick={() => askToUpdateStatus(reservation, action)}
+                                      onClick={() =>
+                                        askToUpdateStatus(reservation, action)
+                                      }
                                       className={`rounded px-2.5 py-1 text-[11px] font-medium disabled:opacity-60 ${action.className}`}
                                     >
                                       {action.label}
                                     </button>
                                   ))
                                 )}
-                                {(!canUpdate || (actions.length === 0 && !canEdit)) ? (
-                                  <span className="text-xs text-slate-400">
-                                    —
-                                  </span>
-                                ) : null}
                               </div>
                             </td>
                           </tr>
@@ -1235,7 +1366,7 @@ export default function StaffReservation() {
             key={editing ? editing._id : "new"}
             reservation={editing}
             customers={customers}
-            capsules={editing ? editableCapsules : bookableCapsules}
+            services={editing ? editableServices : bookableServices}
             saving={saving}
             onClose={() => {
               setShowForm(false);
@@ -1249,8 +1380,8 @@ export default function StaffReservation() {
           <ConfirmModal
             reservation={pending.reservation}
             action={pending.action}
-            capsuleName={
-              capsuleNames.get(pending.reservation.capsuleId) ||
+            serviceName={
+              serviceNames.get(pending.reservation.capsuleId) ||
               pending.reservation.capsuleName ||
               pending.reservation.capsuleId
             }
