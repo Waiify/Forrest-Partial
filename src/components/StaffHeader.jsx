@@ -488,34 +488,14 @@ export default function StaffHeader({
                 )}
               </div>
 
-              <div className="py-1">
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => goTo(PROFILE_ROUTE)}
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-[#0B4A2E] transition hover:bg-[#E8F3ED]"
-                >
-                  <User className="h-4 w-4" />
-                  Profile
-                </button>
-
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => goTo(SETTINGS_ROUTE)}
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-[#0B4A2E] transition hover:bg-[#E8F3ED]"
-                >
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </button>
-              </div>
+             
 
               <div className="border-t border-[#CFE3D9]">
                 <button
                   type="button"
                   role="menuitem"
                   onClick={handleLogout}
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-[#0B4A2E] transition hover:bg-[#E8F3ED]"
+                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-red-600 transition hover:bg-red-50"
                 >
                   <LogOut className="h-4 w-4" />
                   Log out

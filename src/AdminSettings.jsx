@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Cloud, QrCode } from "lucide-react";
+import ReCAPTCHA from "react-google-recaptcha";
 
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
@@ -208,6 +209,7 @@ async function readResponse(response) {
       window.dispatchEvent(new Event("settings-unlock-expired"));
     }
     const error = new Error(data.message || `Request failed (${response.status} ${response.statusText})`);
+    error.status = response.status;
     if (data.retryAfterSeconds) error.retryAfterSeconds = data.retryAfterSeconds;
     throw error;
   }
@@ -246,6 +248,87 @@ const toast = Swal.mixin({
 
 function notifySuccess(title, timer = 2500) {
   toast.fire({ icon: "success", title, timer });
+}
+
+function validateGoogleMapsApiKey(key) {
+  return new Promise((resolve, reject) => {
+    const frame = document.createElement("iframe");
+    frame.title = "Google Maps API key validation";
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;left:-10000px;top:0;width:320px;height:240px;border:0";
+    let settled = false;
+    let authCheck;
+    let timeout;
+    let errorObserver;
+
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(authCheck);
+      window.clearTimeout(timeout);
+      errorObserver?.disconnect();
+      frame.remove();
+      if (error) reject(error);
+      else resolve();
+    };
+
+    timeout = window.setTimeout(
+      () => finish(new Error("Timed out while validating the Google Maps API key.")),
+      15000
+    );
+    frame.onload = () => {
+      const frameWindow = frame.contentWindow;
+      const frameDocument = frame.contentDocument;
+      if (!frameWindow || !frameDocument || !frameWindow.console) {
+        finish(new Error("Could not start Google Maps API key validation."));
+        return;
+      }
+
+      frameDocument.body.innerHTML = '<div id="map" style="width:300px;height:200px"></div>';
+      const originalConsoleError = frameWindow.console.error.bind(frameWindow.console);
+      frameWindow.console.error = (...args) => {
+        const message = args.map((value) => String(value)).join(" ");
+        if (/Google Maps JavaScript API error:/i.test(message)) {
+          finish(new Error("The key is invalid."));
+        }
+        originalConsoleError(...args);
+      };
+      frameWindow.gm_authFailure = () => {
+        finish(new Error("The key is invalid."));
+      };
+      errorObserver = new frameWindow.MutationObserver(() => {
+        if (/for development purposes only|can't load google maps correctly/i.test(frameDocument.body.innerText)) {
+          finish(new Error("The key is invalid."));
+        }
+      });
+      errorObserver.observe(frameDocument.body, { childList: true, characterData: true, subtree: true });
+      frameWindow.__validateGoogleMapsApiKey = () => {
+        try {
+          const map = new frameWindow.google.maps.Map(frameDocument.getElementById("map"), {
+            center: { lat: 0, lng: 0 },
+            zoom: 1,
+          });
+          authCheck = window.setTimeout(
+            () => finish(new Error("Google Maps did not confirm that the API key can load map tiles.")),
+            12000
+          );
+          frameWindow.google.maps.event.addListenerOnce(map, "tilesloaded", () => {
+            authCheck = window.setTimeout(() => finish(), 1500);
+          });
+        } catch {
+          finish(new Error("The key is invalid."));
+        }
+      };
+
+      const script = frameDocument.createElement("script");
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__validateGoogleMapsApiKey&v=weekly`;
+      script.async = true;
+      script.onerror = () => finish(new Error("Could not load Google Maps to validate this API key."));
+      frameDocument.head.appendChild(script);
+    };
+    frame.src = "about:blank";
+    document.body.appendChild(frame);
+  });
 }
 
 // Reusable confirmation dialog. Resolves to true if the admin confirms.
@@ -566,8 +649,20 @@ function IntegrationCard({ item, on, saving, open, expandable, badge, toggleDisa
 }
 
 // Asks for the admin code. Only opened when the admin saves a change.
-function AdminCodeModal({ title, description, busy, error, confirmLabel, onCancel, onConfirm }) {
+function AdminCodeModal({
+  title,
+  description,
+  busy,
+  error,
+  confirmLabel,
+  requiresCaptcha = false,
+  captchaToken,
+  onCaptchaChange,
+  onCancel,
+  onConfirm,
+}) {
   const [code, setCode] = useState("");
+  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#04281A]/50 p-4 backdrop-blur-[2px]">
@@ -588,6 +683,24 @@ function AdminCodeModal({ title, description, busy, error, confirmLabel, onCance
           <p className="mt-1 text-sm text-[#5F7F70]">{description}</p>
         </div>
         <div className="space-y-3 px-6 py-5">
+          {requiresCaptcha && (
+            <div className="space-y-2">
+              <p className="text-sm text-[#5F7F70]">
+                Complete this CAPTCHA so Google can verify the secret key you entered.
+              </p>
+              {siteKey ? (
+                <ReCAPTCHA
+                  sitekey={siteKey}
+                  onChange={onCaptchaChange}
+                  onExpired={() => onCaptchaChange("")}
+                />
+              ) : (
+                <p className="text-sm text-red-700" role="alert">
+                  The frontend reCAPTCHA site key is not configured.
+                </p>
+              )}
+            </div>
+          )}
           <label htmlFor="settings-admin-code" className="block text-sm font-medium text-[#0B3B2A]">
             Admin code
           </label>
@@ -616,7 +729,11 @@ function AdminCodeModal({ title, description, busy, error, confirmLabel, onCance
           >
             Cancel
           </button>
-          <button type="submit" disabled={busy || !code} className={primaryButton}>
+          <button
+            type="submit"
+            disabled={busy || !code || (requiresCaptcha && (!siteKey || !captchaToken))}
+            className={primaryButton}
+          >
             {busy ? "Verifying..." : confirmLabel}
           </button>
         </div>
@@ -657,6 +774,7 @@ export default function AdminSettings() {
   const [modal, setModal] = useState(null);
   const [modalBusy, setModalBusy] = useState(false);
   const [modalError, setModalError] = useState("");
+  const [captchaValidationToken, setCaptchaValidationToken] = useState("");
 
   // Email sender account
   const [creds, setCreds] = useState({
@@ -1195,6 +1313,7 @@ export default function AdminSettings() {
     event.preventDefault();
     setCaptchaMsg(null);
     if (!secretDirty) return;
+    setCaptchaValidationToken("");
     setModalError("");
     setModal({ kind: "captcha" });
   }
@@ -1350,7 +1469,11 @@ export default function AdminSettings() {
           await request(`${API}/settings/credentials`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ adminCode: code, CUSTOM_RECAPTCHA_SECRET: secret.trim() }),
+            body: JSON.stringify({
+              adminCode: code,
+              RECAPTCHA_CUSTOM_API_KEY: secret.trim(),
+              recaptchaValidationToken: captchaValidationToken,
+            }),
           })
         );
         applyCaptcha(data.recaptcha);
@@ -1363,6 +1486,8 @@ export default function AdminSettings() {
       ) {
         const isGoogleAuth = modal.kind === "googleAuth";
         const isGoogleDrive = modal.kind === "googleDrive";
+        const keyValue = (isGoogleAuth ? googleAuthKeyInput : mapsKeyInput).trim();
+        if (modal.kind === "googleMaps") await validateGoogleMapsApiKey(keyValue);
         const body = isGoogleDrive
           ? {
               adminCode: code,
@@ -1374,8 +1499,7 @@ export default function AdminSettings() {
             }
           : {
               adminCode: code,
-              [isGoogleAuth ? "CUSTOM_FIREBASE_API_KEY" : "CUSTOM_GOOGLE_MAPS_API_KEY"]:
-                (isGoogleAuth ? googleAuthKeyInput : mapsKeyInput).trim(),
+              [isGoogleAuth ? "FIREBASE_CUSTOM_API_KEY" : "GOOGLE_MAPS_CUSTOM_API_KEY"]: keyValue,
             };
         const data = await readResponse(
           await request(`${API}/settings/credentials`, {
@@ -1413,6 +1537,24 @@ export default function AdminSettings() {
           ...messages,
           [modal.kind]: { type: "error", text: err.message || "Could not save the API key." },
         }));
+        if (modal.kind !== "googleDrive" && (modal.kind === "googleMaps" || err.status === 400)) {
+          setModal(null);
+          await compactSwal.fire({
+            icon: "error",
+            title: "API key not saved",
+            text: err.message || "The API key could not be validated.",
+          });
+        }
+      } else if (modal.kind === "captcha") {
+        setCaptchaMsg({ type: "error", text: err.message || "Could not save the reCAPTCHA key." });
+        if (err.status === 400) {
+          setModal(null);
+          await compactSwal.fire({
+            icon: "error",
+            title: "API key not saved",
+            text: err.message || "The reCAPTCHA secret key could not be validated.",
+          });
+        }
       } else {
         setModalError(err.message || "Could not save.");
       }
@@ -1424,6 +1566,7 @@ export default function AdminSettings() {
   function closeModal() {
     setModal(null);
     setModalError("");
+    setCaptchaValidationToken("");
   }
 
   const modalText = !modal
@@ -1437,7 +1580,8 @@ export default function AdminSettings() {
         : modal.kind === "captcha"
           ? {
               title: "Save reCAPTCHA secret key",
-              description: "Enter your admin code to save this as the custom reCAPTCHA secret key.",
+              description: "Complete the CAPTCHA and enter your admin code to verify and save this secret key.",
+              requiresCaptcha: true,
               confirmLabel: "Save secret key",
             }
           : modal.kind === "googleDrive"
@@ -1467,7 +1611,7 @@ export default function AdminSettings() {
       inputId="captcha-secret"
       message={captchaMsg}
       originalHint="RECAPTCHA_SECRET from .env"
-      customHint="CUSTOM_RECAPTCHA_SECRET"
+      customHint="RECAPTCHA_CUSTOM_API_KEY in server/.env"
       onSwitch={switchCaptchaSource}
       onSave={requestSaveCaptcha}
     />
@@ -1483,7 +1627,7 @@ export default function AdminSettings() {
       inputId="custom-firebase-api-key"
       message={apiKeyMessages.googleAuth}
       originalHint="From firebase.config.json"
-      customHint="CUSTOM_FIREBASE_API_KEY in server/.env"
+      customHint="FIREBASE_CUSTOM_API_KEY in server/.env"
       onSwitch={(source) => switchApiKeySource("googleAuth", source)}
       onSave={(event) => requestSaveApiKey(event, "googleAuth")}
     />
@@ -1499,7 +1643,7 @@ export default function AdminSettings() {
       inputId="custom-google-maps-key"
       message={apiKeyMessages.googleMaps}
       originalHint="VITE_GOOGLE_MAPS_API_KEY from root .env"
-      customHint="CUSTOM_GOOGLE_MAPS_API_KEY in server/.env"
+      customHint="GOOGLE_MAPS_CUSTOM_API_KEY in server/.env"
       onSwitch={(source) => switchApiKeySource("googleMaps", source)}
       onSave={(event) => requestSaveApiKey(event, "googleMaps")}
     />
@@ -1891,6 +2035,9 @@ export default function AdminSettings() {
           title={modalText.title}
           description={modalText.description}
           confirmLabel={modalText.confirmLabel}
+          requiresCaptcha={modalText.requiresCaptcha}
+          captchaToken={captchaValidationToken}
+          onCaptchaChange={setCaptchaValidationToken}
           busy={modalBusy}
           error={modalError}
           onCancel={closeModal}

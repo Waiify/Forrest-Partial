@@ -3,10 +3,34 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import Header from "./components/AdminHeader.jsx";
 import Sidebar from "./components/Adminsidebar.jsx";
+import Swal from "sweetalert2";
 
 const RAW_API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
 const API_URL = RAW_API.endsWith("/api") ? RAW_API : `${RAW_API}/api`;
 const PAGE_SIZE = 10;
+const compactSwal = Swal.mixin({
+  position: "top",
+  width: 360,
+  padding: "0.75rem 1rem 1rem",
+  backdrop: "rgba(4, 40, 26, 0.35)",
+  customClass: {
+    popup: "!rounded-xl !text-sm",
+    icon: "!text-[0.6rem] !mb-1",
+    title: "!p-0 !pt-1 !text-base !font-semibold !text-[#0B3B2A]",
+    htmlContainer: "!m-0 !mt-1 !text-sm !text-[#5F7F70]",
+    actions: "!mt-3",
+    confirmButton: "!px-4 !py-2 !text-sm",
+    cancelButton: "!px-4 !py-2 !text-sm",
+  },
+});
+const toast = Swal.mixin({
+  toast: true,
+  position: "top",
+  showConfirmButton: false,
+  timer: 2500,
+  timerProgressBar: true,
+  customClass: { popup: "!rounded-lg !text-sm" },
+});
 
 const ACTION_LABELS = {
   view: "View",
@@ -798,11 +822,20 @@ export default function Management() {
 
   async function toggleStatus(user) {
     const nextStatus = user.status === "active" ? "disabled" : "active";
-    if (
-      nextStatus === "disabled" &&
-      !window.confirm(`Disable ${user.name}'s account? They will no longer be able to sign in.`)
-    ) {
-      return;
+    if (nextStatus === "disabled") {
+      const result = await compactSwal.fire({
+        icon: "warning",
+        title: "Disable account?",
+        text: `${user.name} will no longer be able to sign in.`,
+        showCancelButton: true,
+        confirmButtonText: "Disable account",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#DC2626",
+        cancelButtonColor: "#6F8E7F",
+        reverseButtons: true,
+        focusCancel: true,
+      });
+      if (!result.isConfirmed) return;
     }
     const adminCode = user.role === "admin" && nextStatus === "active"
       ? window.prompt("Enter your admin code to restore administrator access.")
@@ -811,7 +844,12 @@ export default function Management() {
     setActionError("");
     try {
       await updateUser(user._id, { status: nextStatus, ...(adminCode ? { adminCode } : {}) });
-      setNotice(`${user.name} is now ${nextStatus === "active" ? "active" : "disabled"}.`);
+      if (nextStatus === "active") {
+        setNotice("");
+        toast.fire({ icon: "success", title: `${user.name}'s account is now active.` });
+      } else {
+        setNotice(`${user.name} is now disabled.`);
+      }
     } catch (error) {
       setActionError(error.message);
     }

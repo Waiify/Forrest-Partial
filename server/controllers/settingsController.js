@@ -16,7 +16,6 @@ module.exports = function createSettingsController(context) {
     getGoogleDriveCredentialValues,
     getGoogleMapsApiKey,
     getMailAuth,
-    getRecaptchaSecret,
     getSettings,
     hasCustomCaptcha,
     hasCustomEmail,
@@ -455,9 +454,12 @@ module.exports = function createSettingsController(context) {
         const str = (v) => (typeof v === 'string' ? v.trim() : '');
         const newUser = str(req.body.CUSTOM_EMAIL_USER);
         const newPass = typeof req.body.CUSTOM_EMAIL_PASS === 'string' ? req.body.CUSTOM_EMAIL_PASS : '';
-        const newCaptcha = str(req.body.CUSTOM_RECAPTCHA_SECRET);
-        const newFirebaseApiKey = str(req.body.CUSTOM_FIREBASE_API_KEY);
-        const newMapsApiKey = str(req.body.CUSTOM_GOOGLE_MAPS_API_KEY);
+        const newCaptcha = str(req.body.RECAPTCHA_CUSTOM_API_KEY || req.body.CUSTOM_RECAPTCHA_SECRET);
+        const newFirebaseApiKey = str(req.body.FIREBASE_CUSTOM_API_KEY || req.body.CUSTOM_FIREBASE_API_KEY);
+        const newMapsApiKey = str(req.body.GOOGLE_MAPS_CUSTOM_API_KEY || req.body.CUSTOM_GOOGLE_MAPS_API_KEY);
+        const captchaRequested = Boolean(newCaptcha);
+        const firebaseApiKeyRequested = Boolean(newFirebaseApiKey);
+        const mapsApiKeyRequested = Boolean(newMapsApiKey);
         const driveCredentialsProvided = [
           'CUSTOM_GOOGLE_DRIVE_CLIENT_ID',
           'CUSTOM_GOOGLE_DRIVE_CLIENT_SECRET',
@@ -469,18 +471,19 @@ module.exports = function createSettingsController(context) {
         const mail = getMailAuth();
         const userChanged = Boolean(newUser) && newUser !== mail.user;
         const passChanged = Boolean(newPass) && newPass !== mail.pass;
-        const captchaChanged = Boolean(newCaptcha) && newCaptcha !== getRecaptchaSecret();
+        const captchaChanged = Boolean(newCaptcha) &&
+          newCaptcha !== (process.env.RECAPTCHA_CUSTOM_API_KEY || process.env.CUSTOM_RECAPTCHA_SECRET);
         const firebaseApiKeyChanged = Boolean(newFirebaseApiKey) &&
-          newFirebaseApiKey !== process.env.CUSTOM_FIREBASE_API_KEY;
+          newFirebaseApiKey !== (process.env.FIREBASE_CUSTOM_API_KEY || process.env.CUSTOM_FIREBASE_API_KEY);
         const mapsApiKeyChanged = Boolean(newMapsApiKey) &&
-          newMapsApiKey !== process.env.CUSTOM_GOOGLE_MAPS_API_KEY;
+          newMapsApiKey !== (process.env.GOOGLE_MAPS_CUSTOM_API_KEY || process.env.CUSTOM_GOOGLE_MAPS_API_KEY);
     
         if (
           !userChanged
           && !passChanged
-          && !captchaChanged
-          && !firebaseApiKeyChanged
-          && !mapsApiKeyChanged
+          && !captchaRequested
+          && !firebaseApiKeyRequested
+          && !mapsApiKeyRequested
           && !driveCredentialsProvided
         ) {
           return res.status(400).json({ message: 'Nothing to update' });
@@ -496,16 +499,25 @@ module.exports = function createSettingsController(context) {
           setEnvVar('CUSTOM_EMAIL_PASS', passChanged ? newPass : (process.env.CUSTOM_EMAIL_PASS || mail.pass));
           setEnvVar('EMAIL_SOURCE', 'custom');
         }
-        if (captchaChanged) {
-          setEnvVar('CUSTOM_RECAPTCHA_SECRET', newCaptcha);
+        if (captchaRequested) {
+          if (captchaChanged) {
+            setEnvVar('RECAPTCHA_CUSTOM_API_KEY', newCaptcha);
+            if (process.env.CUSTOM_RECAPTCHA_SECRET) removeEnvVar('CUSTOM_RECAPTCHA_SECRET');
+          }
           setEnvVar('RECAPTCHA_SOURCE', 'custom');
         }
-        if (firebaseApiKeyChanged) {
-          setEnvVar('CUSTOM_FIREBASE_API_KEY', newFirebaseApiKey);
+        if (firebaseApiKeyRequested) {
+          if (firebaseApiKeyChanged) {
+            setEnvVar('FIREBASE_CUSTOM_API_KEY', newFirebaseApiKey);
+            if (process.env.CUSTOM_FIREBASE_API_KEY) removeEnvVar('CUSTOM_FIREBASE_API_KEY');
+          }
           setEnvVar('FIREBASE_API_KEY_SOURCE', 'custom');
         }
-        if (mapsApiKeyChanged) {
-          setEnvVar('CUSTOM_GOOGLE_MAPS_API_KEY', newMapsApiKey);
+        if (mapsApiKeyRequested) {
+          if (mapsApiKeyChanged) {
+            setEnvVar('GOOGLE_MAPS_CUSTOM_API_KEY', newMapsApiKey);
+            if (process.env.CUSTOM_GOOGLE_MAPS_API_KEY) removeEnvVar('CUSTOM_GOOGLE_MAPS_API_KEY');
+          }
           setEnvVar('GOOGLE_MAPS_API_KEY_SOURCE', 'custom');
         }
     
@@ -513,9 +525,9 @@ module.exports = function createSettingsController(context) {
         const changed = [
           userChanged && 'email address',
           passChanged && 'email password',
-          captchaChanged && 'reCAPTCHA secret',
-          firebaseApiKeyChanged && 'Firebase API key',
-          mapsApiKeyChanged && 'Google Maps API key',
+          captchaRequested && 'reCAPTCHA secret',
+          firebaseApiKeyRequested && 'Firebase API key',
+          mapsApiKeyRequested && 'Google Maps API key',
           driveCredentialsProvided && 'Google Drive credentials',
         ].filter(Boolean);
         await audit(req, {
@@ -536,7 +548,11 @@ module.exports = function createSettingsController(context) {
           ['CUSTOM_EMAIL_USER', 'CUSTOM_EMAIL_PASS', 'EMAIL_SOURCE'].forEach(removeEnvVar);
         }
         if (which !== 'email') {
-          ['CUSTOM_RECAPTCHA_SECRET', 'RECAPTCHA_SOURCE'].forEach(removeEnvVar);
+          [
+            'RECAPTCHA_CUSTOM_API_KEY',
+            'CUSTOM_RECAPTCHA_SECRET',
+            'RECAPTCHA_SOURCE',
+          ].forEach(removeEnvVar);
         }
     
         // AUDIT

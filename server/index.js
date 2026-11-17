@@ -19,6 +19,7 @@ const registerAuditLog = require('./AuditLogs');
 const registerGoogleDrive = require('./GoogleDrive');
 const createAuthMiddleware = require('./middleware/auth');
 const createSettingsAccess = require('./middleware/settingsAccess');
+const createIntegrationKeyValidationMiddleware = require('./middleware/validateIntegrationKeys');
 const registerRoutes = require('./routes');
 
 const ADMIN_CODE = process.env.ADMIN_CODE || '';
@@ -60,24 +61,26 @@ function getMailAuth() {
 }
 
 function hasCustomCaptcha() {
-  return Boolean(process.env.CUSTOM_RECAPTCHA_SECRET);
+  return Boolean(process.env.RECAPTCHA_CUSTOM_API_KEY || process.env.CUSTOM_RECAPTCHA_SECRET);
 }
 function usingCustomCaptcha() {
   return hasCustomCaptcha() && process.env.RECAPTCHA_SOURCE !== 'original';
 }
 function getRecaptchaSecret() {
-  return usingCustomCaptcha() ? process.env.CUSTOM_RECAPTCHA_SECRET : process.env.RECAPTCHA_SECRET;
+  return usingCustomCaptcha()
+    ? process.env.RECAPTCHA_CUSTOM_API_KEY || process.env.CUSTOM_RECAPTCHA_SECRET
+    : process.env.RECAPTCHA_SECRET;
 }
 
 function hasCustomGoogleAuthKey() {
-  return Boolean(process.env.CUSTOM_FIREBASE_API_KEY);
+  return Boolean(process.env.FIREBASE_CUSTOM_API_KEY || process.env.CUSTOM_FIREBASE_API_KEY);
 }
 function usingCustomGoogleAuthKey() {
   return hasCustomGoogleAuthKey() && process.env.FIREBASE_API_KEY_SOURCE !== 'original';
 }
 function getGoogleAuthApiKey() {
   return usingCustomGoogleAuthKey()
-    ? process.env.CUSTOM_FIREBASE_API_KEY
+    ? process.env.FIREBASE_CUSTOM_API_KEY || process.env.CUSTOM_FIREBASE_API_KEY
     : require('../src/firebase.config.json').apiKey;
 }
 
@@ -495,14 +498,14 @@ function getOriginalGoogleMapsApiKey() {
 }
 
 function hasCustomGoogleMapsKey() {
-  return Boolean(process.env.CUSTOM_GOOGLE_MAPS_API_KEY);
+  return Boolean(process.env.GOOGLE_MAPS_CUSTOM_API_KEY || process.env.CUSTOM_GOOGLE_MAPS_API_KEY);
 }
 function usingCustomGoogleMapsKey() {
   return hasCustomGoogleMapsKey() && process.env.GOOGLE_MAPS_API_KEY_SOURCE !== 'original';
 }
 function getGoogleMapsApiKey() {
   return usingCustomGoogleMapsKey()
-    ? process.env.CUSTOM_GOOGLE_MAPS_API_KEY
+    ? process.env.GOOGLE_MAPS_CUSTOM_API_KEY || process.env.CUSTOM_GOOGLE_MAPS_API_KEY
     : getOriginalGoogleMapsApiKey();
 }
 
@@ -628,6 +631,10 @@ const routeContext = {
   validRoomName,
   verifyAdminCode,
 };
+routeContext.validateIntegrationKeys = createIntegrationKeyValidationMiddleware({
+  fetch,
+  removeEnvVar,
+});
 registerRoutes(app, routeContext);
 
 process.on('unhandledRejection', (reason) => {

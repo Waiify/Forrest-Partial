@@ -6,6 +6,7 @@ module.exports = function registerRoutes(app, context, controllers) {
     requireAdmin,
     requireSettingsUnlock,
     verifyAdminCode,
+    validateIntegrationKeys,
   } = context;
   app.get('/api/settings/unlock/recipients', requireAdmin, controllers.listSettingsOtpRecipients);
   app.get('/api/settings/unlock/status', requireAdmin, controllers.getSettingsUnlockStatus);
@@ -20,6 +21,12 @@ module.exports = function registerRoutes(app, context, controllers) {
   app.get('/api/settings/credentials', requireSettingsUnlock, controllers.getCredentialSettings);
   app.get('/api/settings/credentials/reveal', requireSettingsUnlock, controllers.revealCredential);
   app.put('/api/settings/credentials/source', requireSettingsUnlock, controllers.switchCredentialSource);
-  app.patch('/api/settings/credentials', requireSettingsUnlock, verifyAdminCode, controllers.updateCredentials);
+  app.patch(
+    '/api/settings/credentials',
+    requireSettingsUnlock,
+    verifyAdminCode,
+    validateIntegrationKeys,
+    controllers.updateCredentials
+  );
   app.delete('/api/settings/credentials', requireSettingsUnlock, verifyAdminCode, controllers.deleteCredentials);
 };
